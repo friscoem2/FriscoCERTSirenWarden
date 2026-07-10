@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Frisco Tornado Siren Volunteer Map</title>
+  <link rel="icon" type="image/png" href="https://drive.google.com/thumbnail?id=16Lg4zmmXXKSeqZXpguuJMuZVAh3Xu9dv&sz=w64">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/00-reset-theme-layout.css">
+  <link rel="stylesheet" href="assets/css/01-screens-login.css">
+  <link rel="stylesheet" href="assets/css/02-map-controls-radar.css">
+  <link rel="stylesheet" href="assets/css/03-markers-popups.css">
+  <link rel="stylesheet" href="assets/css/04-weather-lightbox.css">
+  <link rel="stylesheet" href="assets/css/05-leaderboard-report-modals.css">
+  <link rel="stylesheet" href="assets/css/06-responsive.css">
+  <link rel="stylesheet" href="assets/css/07-volunteer-tour.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <div id="header">
+    <img id="header-logo"
+      src="https://drive.google.com/thumbnail?id=16Lg4zmmXXKSeqZXpguuJMuZVAh3Xu9dv&sz=w200"
+      alt="Frisco CERT Logo" onerror="this.style.display='none'">
+    <div id="header-text">
+      <h1>Frisco Outdoor Warning Siren Map</h1>
+      <p>Tap a siren to sign up as a volunteer listener</p>
+    </div>
+    <div id="lives-pill">
+      <span id="lives-label">Lives</span>
+      <span id="lives-count">—</span>
+      <span id="lives-sublabel">Protected</span>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map">
+    <div id="loading-screen">
+      <div class="spinner"></div>
+      <p>Loading Siren Data…</p>
+    </div>
+    <div id="error-screen">
+      <h2>⚠️ Could Not Load Data</h2>
+      <p id="error-msg">Unable to fetch siren data.</p>
+      <div id="error-detail"></div>
+      <button class="btn-primary" onclick="startLoad()">Try Again</button>
+    </div>
+    <div id="data-source-bar">
+      <div class="dot" id="freshness-dot"></div>
+      <span id="freshness-label">Next test in —</span>
+    </div>
+    <div id="coverage-banner">🎧 Audible Range Coverage — View Only</div>
+
+    <!-- Radar + Filter buttons — bottom-left above zoom controls -->
+    <div style="position:absolute;bottom:82px;left:10px;z-index:700;display:flex;flex-direction:column;gap:6px;">
+      <button id="tour-btn" class="map-side-btn" onclick="openTour()" title="New volunteer orientation" style="font-size:16px;font-weight:900;font-family:var(--font-d);color:#1E5238;">?</button>
+      <button id="coverage-btn" class="map-side-btn" onclick="toggleCoverageMode()" title="Toggle audible range coverage">🎧</button>
+      <button id="radar-btn"    class="map-side-btn" onclick="toggleRadarPanel()"   title="Weather radar">🌧️</button>
+      <button id="filter-btn" onclick="toggleFilterPanel()" title="Filter sirens">
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 3h14M3.5 7h9M6 11h4" stroke="#374151" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div id="filter-panel">
+      <div class="fp-title">Filter Sirens <button onclick="resetFilters()">Reset</button></div>
+      <div class="fp-row" data-filter="assigned"  onclick="toggleFilter(this)">
+        <div class="fp-check"></div><div class="fp-dot" style="background:#6b7280;"></div><span class="fp-label">Assigned</span>
+      </div>
+      <div class="fp-row checked" data-filter="active"   onclick="toggleFilter(this)">
+        <div class="fp-check"></div><div class="fp-dot" style="background:#10b981;"></div><span class="fp-label">Active</span>
+      </div>
+      <div class="fp-row checked" data-filter="attention" onclick="toggleFilter(this)">
+        <div class="fp-check"></div><div class="fp-dot" style="background:#f59e0b;"></div><span class="fp-label">Attention Needed</span>
+      </div>
+      <div class="fp-row checked" data-filter="action"   onclick="toggleFilter(this)">
+        <div class="fp-check"></div><div class="fp-dot" style="background:#f97316;"></div><span class="fp-label">Action Required</span>
+      </div>
+      <div class="fp-row checked" data-filter="urgent"   onclick="toggleFilter(this)">
+        <div class="fp-check"></div><div class="fp-dot" style="background:#dc2626;"></div><span class="fp-label">Urgent</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KILL SWITCH SCREEN -->
+<div id="kill-screen">
+  <img class="kill-logo" src="https://drive.google.com/thumbnail?id=16Lg4zmmXXKSeqZXpguuJMuZVAh3Xu9dv&sz=w200" alt="Frisco CERT Logo" onerror="this.style.display='none'">
+  <div class="kill-title">Testing Canceled</div>
+  <div class="kill-accent"></div>
+  <div class="kill-msg">Testing for today has been canceled. Please stay home, and we'll see you at the next scheduled test.</div>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-card">
+    <img class="login-logo" src="https://drive.google.com/thumbnail?id=16Lg4zmmXXKSeqZXpguuJMuZVAh3Xu9dv&sz=w200" alt="CERT Logo">
+    <div class="login-title">Frisco CERT<br>Siren Map</div>
+    <div class="login-subtitle">Authorized Personnel Only</div>
+    <div class="login-accent-bar"></div>
+    <form id="login-form" class="login-form" onsubmit="submitLogin(event)" novalidate>
+      <div class="login-field">
+        <label class="login-label" for="login-username">Username</label>
+        <div class="login-input-wrap">
+          <input id="login-username" class="login-input" type="text" placeholder="Enter username" autocomplete="username" autocapitalize="none" spellcheck="false" />
+        </div>
+      </div>
+      <div class="login-field">
+        <label class="login-label" for="login-pw">Password</label>
+        <div class="login-input-wrap">
+          <input id="login-pw" class="login-input" type="password" placeholder="Enter password" autocomplete="current-password" />
+        </div>
+      </div>
+      <button class="login-btn" id="login-btn" type="submit">Log In</button>
+      <div class="login-error" id="login-error" role="alert" aria-live="polite"></div>
+    </form>
+  </div>
+</div>
+
+<!-- FAB SPEED-DIAL -->
+<div id="fab-cluster">
+  <button id="fab-toggle" onclick="toggleFabMenu()"><span id="fab-toggle-icon">＋</span> Menu</button>
+  <button id="fab-locate"  class="fab fab-locate"  onclick="locateMe()">📍 Locate Me</button>
+  <button id="fab-lb"      class="fab"             onclick="openLeaderboard()">🏆 Leaderboard</button>
+  <button id="fab-legend"  class="fab"             onclick="toggleLegend()">🗺️ Legend</button>
+  <button id="fab-weather" class="fab"             onclick="openWeatherPanel()">☁️ Weather</button>
+  <button id="fab-report"  class="fab"             onclick="toggleReportView()">📋 Report</button>
+  <button id="fab-suggest" class="fab"             onclick="openSuggestionBox()">🗳️ Suggestion Box</button>
+</div>
+
+<!-- PHOTO LIGHTBOX -->
+<div id="lightbox" onclick="closeLightbox()">
+  <button id="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="Siren photo">
+  <div id="lightbox-caption"></div>
+</div>
+
+<!-- RADAR OVERLAY (floats on map) -->
+<div id="radar-overlay">
+  <div class="ro-header">
+    <span class="ro-title">🌧️ Radar</span>
+    <div class="ro-toggle-wrap">
+      <span class="ro-toggle-label">Layer</span>
+      <label class="ro-toggle">
+        <input type="checkbox" id="radar-layer-toggle" onchange="toggleRadarLayer(this.checked)">
+        <div class="ro-toggle-track"></div>
+        <div class="ro-toggle-thumb"></div>
+      </label>
+    </div>
+    <button class="ro-close" onclick="closeRadarPanel()">✕</button>
+  </div>
+  <div id="radar-loading" class="ro-loading">Loading radar…</div>
+  <div id="radar-controls-wrap" style="display:none;flex-direction:column;gap:0;">
+    <div class="ro-time-row">
+      <div class="ro-time" id="radar-time-label">—</div>
+      <div class="ro-badge" id="radar-time-badge">Past</div>
+    </div>
+    <input type="range" class="ro-scrubber" id="radar-scrubber" min="0" value="0" step="1"
+           oninput="onRadarScrub(this.value)">
+    <div class="ro-ticks" id="radar-ticks"></div>
+    <div class="ro-controls" style="margin-top:8px;">
+      <button class="ro-play-btn" id="radar-play-btn" onclick="toggleRadarPlay()">▶</button>
+      <button class="ro-speed-btn" id="radar-speed-btn" onclick="cycleRadarSpeed()">1×</button>
+      <div class="ro-opacity-wrap">
+        <span class="ro-opacity-label">Opacity</span>
+        <input type="range" class="ro-opacity-slider" id="radar-opacity" min="20" max="90" value="70" step="5"
+               oninput="setRadarOpacity(this.value)">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LEADERBOARD PANEL -->
+<div id="leaderboard-panel" onclick="closeLbIfBg(event)">
+  <div class="lb-sheet">
+    <div class="lb-handle"></div>
+    <div class="lb-header">
+      <div class="lb-header-top">
+        <span class="lb-title">🏆 Leaderboard</span>
+        <button class="lb-close" onclick="closeLeaderboard()">✕</button>
+      </div>
+      <div class="lb-subtitle">Frisco CERT Siren Volunteer Rankings — Year to Date</div>
+    </div>
+    <div class="lb-body" id="lb-body">
+      <div class="lb-empty">Loading rankings…</div>
+    </div>
+  </div>
+</div>
+
+<!-- WEATHER PANEL -->
+<div id="weather-panel" onclick="closeWxIfBg(event)">
+  <div class="wx-sheet">
+    <div class="wx-handle"></div>
+    <div class="wx-sheet-header">
+      <div class="wx-sheet-header-top">
+        <span class="wx-sheet-title">☁️ Weather</span>
+        <button class="wx-close" onclick="closeWeatherPanel()">✕</button>
+      </div>
+      <div class="wx-sheet-sub" id="wx-subtitle">3-Day Forecast — Frisco, TX</div>
+    </div>
+    <!-- Tab bar -->
+    <div class="wx-tabs">
+      <button class="wx-tab active" data-days="3" onclick="switchWxTab(3)">3 Day</button>
+      <button class="wx-tab"        data-days="5" onclick="switchWxTab(5)">5 Day</button>
+      <button class="wx-tab"        data-days="7" onclick="switchWxTab(7)">7 Day</button>
+    </div>
+    <div class="wx-body" id="wx-panel-body">
+      <div class="wx-loading">Loading forecast…</div>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT EMAIL GATE -->
+<div id="reportGate">
+  <div class="rg-card">
+    <button class="rg-close" onclick="closeReportGate()">✕</button>
+    <img class="rg-logo" src="https://drive.google.com/thumbnail?id=16Lg4zmmXXKSeqZXpguuJMuZVAh3Xu9dv&sz=w200" alt="CERT Logo">
+    <div class="rg-title">Siren Report</div>
+    <div class="rg-sub">Authorized Volunteers Only</div>
+    <div class="rg-accent"></div>
+    <div class="rg-label">Enter your email address to<br>access the report form</div>
+    <input id="reportEmailInput" class="rg-input" type="email" placeholder="your@email.com" autocomplete="email" />
+    <button class="rg-btn" id="reportGateBtn" onclick="submitReportGate()">Continue</button>
+    <div class="rg-error" id="reportGateError"></div>
+  </div>
+</div>
+
+<!-- REPORT FORM MODAL -->
+<div id="reportFormModal">
+  <div class="rf-sheet">
+    <div class="rf-header">
+      <span class="rf-title" id="reportFormTitle">📋 Siren Report</span>
+      <button class="rf-close" onclick="closeReportForm()">✕</button>
+    </div>
+    <iframe class="rf-iframe" id="reportFormIframe" src="" frameborder="0"></iframe>
+  </div>
+</div>
+
+<!-- VOLUNTEER FORM MODAL -->
+<div id="formModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="modal-title">Volunteer Sign-Up</h2>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <iframe id="formIframe" src="" frameborder="0"></iframe>
+    </div>
+  </div>
+</div>
+
+<!-- SUGGESTION BOX MODAL -->
+<div id="suggestModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🗳️ Suggestion Box</h2>
+      <button class="modal-close" onclick="closeSuggestionBox()" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <iframe id="suggestIframe" src="" frameborder="0"></iframe>
+    </div>
+  </div>
+</div>
+
+<!-- VOLUNTEER ORIENTATION TOUR -->
+<div id="tour-backdrop" onclick="tourBgClose(event)">
+  <div class="tour-modal">
+    <div class="tour-header">
+      <div class="tour-header-left">
+        <div class="tour-step-label" id="tour-step-label">Step 1 of 8</div>
+        <div class="tour-title" id="tour-title">Welcome</div>
+      </div>
+      <button class="tour-close" onclick="closeTour()">✕</button>
+    </div>
+    <div class="tour-progress-bar">
+      <div class="tour-progress-fill" id="tour-progress-fill" style="width:12.5%"></div>
+    </div>
+    <div class="tour-body" id="tour-body"></div>
+    <div class="tour-footer">
+      <button class="tour-nav-btn tour-btn-prev" id="tour-prev" onclick="tourPrev()" disabled>← Back</button>
+      <div class="tour-dot-nav" id="tour-dots"></div>
+      <button class="tour-nav-btn tour-btn-next" id="tour-next" onclick="tourNext()">Next →</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/js/00-config-state-filters.js"></script>
+<script src="assets/js/01-auth-data-loading.js"></script>
+<script src="assets/js/02-map-markers.js"></script>
+<script src="assets/js/03-popups-reports-location.js"></script>
+<script src="assets/js/04-controls-panels-refresh.js"></script>
+<script src="assets/js/05-weather-countdown.js"></script>
+<script src="assets/js/06-coverage-radar.js"></script>
+<script src="assets/js/07-volunteer-tour.js"></script>
+</body>
+</html>
