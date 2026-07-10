@@ -14,7 +14,6 @@ function getResourceName(req) {
 function getConfiguredSheet(resource) {
   const resources = {
     sirens: 'SIREN_SHEET_NAME',
-    leaderboard: 'LEADERBOARD_SHEET_NAME',
   };
 
   const envName = resources[resource];
