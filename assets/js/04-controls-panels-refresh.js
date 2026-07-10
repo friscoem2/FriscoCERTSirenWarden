@@ -34,69 +34,84 @@ function toggleLegend(){
    ===================================================== */
 const RANK_COLORS = ['#f59e0b','#94a3b8','#cd7f32','#10b981','#6366f1','#ec4899','#0ea5e9','#84cc16','#f97316','#8b5cf6'];
 
-function openLeaderboard(){
+async function openLeaderboard(){
   document.getElementById('leaderboard-panel').classList.add('open');
   document.getElementById('lb-body').innerHTML='<div class="lb-empty">Loading rankings…</div>';
-  fetchProtectedData('leaderboard')
-    .then(d=>{ const rows=(d.values||[]).slice(1).filter(r=>r[0]); renderLeaderboard(rows); })
-    .catch(err=>{ document.getElementById('lb-body').innerHTML=`<div class="lb-empty">⚠️ Could not load rankings.<br><small>${err.message}</small></div>`; });
+  try {
+    const response = await fetch('/api/profile?view=leaderboard', {
+      method:'GET',
+      credentials:'same-origin',
+      cache:'no-store',
+      headers:{ Accept:'application/json' },
+    });
+    let data={};
+    try { data=await response.json(); } catch { data={}; }
+    if(response.status===401 && typeof expireLocalSession==='function') expireLocalSession();
+    if(!response.ok) throw new Error(data.error?.message || data.error || `HTTP ${response.status}`);
+    renderLeaderboard(Array.isArray(data.profiles) ? data.profiles : []);
+  } catch(err) {
+    document.getElementById('lb-body').innerHTML=`<div class="lb-empty">⚠️ Could not load rankings.<br><small>${esc(err.message)}</small></div>`;
+  }
 }
 
-function renderLeaderboard(rows){
+function leaderboardAvatar(profile, rank, compact=false){
+  const color=RANK_COLORS[rank-1]||'#6b7280';
+  const avatar=profile.avatar || '🧑‍🚒';
+  const compactStyle=compact ? 'width:36px;height:36px;font-size:17px;border-width:2px;flex-shrink:0;' : '';
+  return `<div class="lb-podium-avatar" style="background:${color};${compactStyle}">${esc(avatar)}</div>`;
+}
+
+function renderLeaderboard(profiles){
+  const rows=(profiles||[]).filter(profile=>profile && profile.publicName);
   if(!rows.length){
     document.getElementById('lb-body').innerHTML='<div class="lb-empty">No rankings yet.<br>Get out there and volunteer! 🚨</div>';
     return;
   }
-  rows.sort((a,b)=>{
-    const visitDiff = (parseInt(b[1])||0) - (parseInt(a[1])||0);
-    if(visitDiff !== 0) return visitDiff;
-    return (parseInt(b[2])||0) - (parseInt(a[2])||0); // tiebreak: unique sites desc
-  });
-  const top3 = rows.slice(0,3);
-  const rest  = rows.slice(3);
-  const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean);
-  const podiumClass = top3[1] ? ['rank-2','rank-1','rank-3'] : ['rank-1'];
-  const podiumBlockH= top3[1] ? ['rank-2-block','rank-1-block','rank-3-block'] : ['rank-1-block'];
+
+  const top3=rows.slice(0,3);
+  const rest=rows.slice(3);
+  const podiumOrder=[top3[1],top3[0],top3[2]].filter(Boolean);
+  const podiumClass=top3[1] ? ['rank-2','rank-1','rank-3'] : ['rank-1'];
+  const podiumBlockH=top3[1] ? ['rank-2-block','rank-1-block','rank-3-block'] : ['rank-1-block'];
 
   let podiumHtml='<div class="lb-podium">';
-  podiumOrder.forEach((r,i)=>{
-    if(!r) return;
-    const origRank = rows.indexOf(r)+1;
-    const initials = (r[0]||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-    const color = RANK_COLORS[origRank-1]||'#6b7280';
+  podiumOrder.forEach((profile,index)=>{
+    const origRank=rows.indexOf(profile)+1;
     podiumHtml+=`
-      <div class="lb-podium-slot">
-        <div class="lb-podium-avatar ${podiumClass[i]}-avatar" style="background:${color};">${initials}</div>
-        <div class="lb-podium-name">${esc(r[0])}</div>
-        <div class="lb-podium-visits">${r[1]||'0'} visits · ${r[2]||'0'} sites</div>
-        <div class="lb-podium-block ${podiumBlockH[i]}">
+      <button class="lb-podium-slot" type="button" onclick="openProfileById('${esc(profile.profileId)}')" aria-label="View ${esc(profile.publicName)} profile">
+        <div class="lb-podium-avatar ${podiumClass[index]}-avatar">${esc(profile.avatar || '🧑‍🚒')}</div>
+        <div class="lb-podium-name">${esc(profile.publicName)}</div>
+        <div class="lb-podium-visits">${Number(profile.totalSignups||0)} signups · ${Number(profile.uniqueSites||0)} sites</div>
+        <div class="lb-podium-rank-label">${esc(profile.rankEmoji||'🌱')} ${esc(profile.rankName||'New')}</div>
+        <div class="lb-podium-block ${podiumBlockH[index]}">
           <div class="lb-podium-rank">${origRank===1?'🥇':origRank===2?'🥈':'🥉'}</div>
         </div>
-      </div>`;
+      </button>`;
   });
   podiumHtml+='</div>';
 
   let listHtml='';
   if(rest.length){
     listHtml+='<div class="lb-section-label">Other Rankings</div><div class="lb-list">';
-    rest.forEach((r,i)=>{
-      const rank=i+4;
-      const color=RANK_COLORS[rank-1]||'#6b7280';
-      const initials=(r[0]||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+    rest.forEach((profile,index)=>{
+      const rank=index+4;
       listHtml+=`
-        <div class="lb-row" style="animation-delay:${i*60}ms;">
+        <button class="lb-row" type="button" style="animation-delay:${index*60}ms" onclick="openProfileById('${esc(profile.profileId)}')" aria-label="View ${esc(profile.publicName)} profile">
           <div class="lb-rank-num">${rank}</div>
-          <div class="lb-podium-avatar" style="background:${color};width:36px;height:36px;font-size:14px;border-width:2px;flex-shrink:0;">${initials}</div>
-          <div class="lb-name">${esc(r[0])}</div>
-          <div class="lb-stats">
-            <div class="lb-stat-primary">${r[1]||0}</div>
-            <div class="lb-stat-secondary">${r[2]||0} unique sites</div>
+          ${leaderboardAvatar(profile,rank,true)}
+          <div class="lb-name-wrap">
+            <div class="lb-name">${esc(profile.publicName)}</div>
+            <div class="lb-rank-name">${esc(profile.rankEmoji||'🌱')} ${esc(profile.rankName||'New')}</div>
           </div>
-        </div>`;
+          <div class="lb-stats">
+            <div class="lb-stat-primary">${Number(profile.totalSignups||0)}</div>
+            <div class="lb-stat-secondary">${Number(profile.uniqueSites||0)} unique sites</div>
+          </div>
+        </button>`;
     });
     listHtml+='</div>';
   }
-  document.getElementById('lb-body').innerHTML = podiumHtml + listHtml;
+  document.getElementById('lb-body').innerHTML=podiumHtml+listHtml;
 }
 
 function closeLeaderboard(){ document.getElementById('leaderboard-panel').classList.remove('open'); }
