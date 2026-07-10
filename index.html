@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="assets/css/06-responsive.css">
   <link rel="stylesheet" href="assets/css/07-volunteer-tour.css">
   <link rel="stylesheet" href="assets/css/08-user-menu.css">
+  <link rel="stylesheet" href="assets/css/09-member-profile.css">
 </head>
 <body>
 <div id="app">
@@ -137,15 +138,15 @@
       <button class="app-menu-close" type="button" onclick="closeAppMenu()" aria-label="Close menu">✕</button>
     </div>
 
-    <div class="app-user-card">
-      <div class="app-user-avatar" id="app-user-avatar">V</div>
-      <div class="app-user-copy">
-        <div class="app-user-hello" id="app-user-hello">Hello, Volunteer</div>
-        <div class="app-user-name" id="app-user-name">Volunteer Profile</div>
-        <div class="app-user-username" id="app-user-username"></div>
-      </div>
-      <div class="app-user-email" id="app-user-email"></div>
-    </div>
+    <button class="app-user-card" type="button" onclick="runAppMenuAction(openOwnProfile)" aria-label="Open my CERT member profile">
+      <span class="app-user-avatar" id="app-user-avatar">V</span>
+      <span class="app-user-copy">
+        <span class="app-user-hello" id="app-user-hello">Hello, Volunteer</span>
+        <span class="app-user-name" id="app-user-name">Volunteer Profile</span>
+        <span class="app-user-username" id="app-user-username"></span>
+      </span>
+      <span class="app-user-email" id="app-user-email"></span>
+    </button>
 
     <nav class="app-menu-nav" aria-label="App navigation">
       <button id="fab-locate" class="app-menu-item fab-locate" type="button" onclick="runAppMenuAction(locateMe)"><span>📍</span><span>Locate Me</span></button>
@@ -221,6 +222,20 @@
       <div class="lb-empty">Loading rankings…</div>
     </div>
   </div>
+</div>
+
+
+<!-- MEMBER PROFILE PANEL -->
+<div id="member-profile-panel" onclick="closeMemberProfileFromBackdrop(event)" aria-hidden="true">
+  <section class="member-profile-shell" role="dialog" aria-modal="true" aria-label="CERT member profile">
+    <button class="member-profile-close" type="button" onclick="closeMemberProfile()" aria-label="Close member profile">✕</button>
+    <div class="member-profile-scroll" id="member-profile-content">
+      <div class="member-profile-loading">
+        <div class="spinner"></div>
+        <div>Loading member profile…</div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <!-- WEATHER PANEL -->
@@ -330,5 +345,6 @@
 <script src="assets/js/06-coverage-radar.js"></script>
 <script src="assets/js/07-volunteer-tour.js"></script>
 <script src="assets/js/08-user-menu.js"></script>
+<script src="assets/js/09-member-profile.js"></script>
 </body>
 </html>
