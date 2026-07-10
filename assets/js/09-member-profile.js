@@ -4,6 +4,36 @@
 let ownMemberProfile = null;
 let memberProfileReturnFocus = null;
 let activeMemberBadges = [];
+let memberProfileViewportTracking = false;
+
+function syncMemberProfileViewport() {
+  const panel = document.getElementById('member-profile-panel');
+  if (!panel) return;
+  const viewport = window.visualViewport;
+  const height = Math.max(320, Math.round(viewport?.height || window.innerHeight));
+  const top = Math.max(0, Math.round(viewport?.offsetTop || 0));
+  panel.style.setProperty('--mp-viewport-height', `${height}px`);
+  panel.style.setProperty('--mp-viewport-top', `${top}px`);
+}
+
+function startMemberProfileViewportTracking() {
+  syncMemberProfileViewport();
+  if (memberProfileViewportTracking) return;
+  window.visualViewport?.addEventListener('resize', syncMemberProfileViewport);
+  window.visualViewport?.addEventListener('scroll', syncMemberProfileViewport);
+  window.addEventListener('orientationchange', syncMemberProfileViewport);
+  window.addEventListener('resize', syncMemberProfileViewport);
+  memberProfileViewportTracking = true;
+}
+
+function stopMemberProfileViewportTracking() {
+  if (!memberProfileViewportTracking) return;
+  window.visualViewport?.removeEventListener('resize', syncMemberProfileViewport);
+  window.visualViewport?.removeEventListener('scroll', syncMemberProfileViewport);
+  window.removeEventListener('orientationchange', syncMemberProfileViewport);
+  window.removeEventListener('resize', syncMemberProfileViewport);
+  memberProfileViewportTracking = false;
+}
 
 async function fetchMemberProfileJson(url) {
   const response = await fetch(url, {
@@ -29,9 +59,13 @@ function openMemberProfilePanel() {
   const panel = document.getElementById('member-profile-panel');
   if (!panel) return;
   memberProfileReturnFocus = document.activeElement;
+  startMemberProfileViewportTracking();
   panel.classList.add('open');
   panel.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
+  const scroll = document.getElementById('member-profile-content');
+  if (scroll) scroll.scrollTop = 0;
+  requestAnimationFrame(syncMemberProfileViewport);
 }
 
 function closeMemberProfile() {
@@ -40,6 +74,7 @@ function closeMemberProfile() {
   panel.classList.remove('open');
   panel.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
+  stopMemberProfileViewportTracking();
   if (memberProfileReturnFocus && typeof memberProfileReturnFocus.focus === 'function') {
     memberProfileReturnFocus.focus();
   }
@@ -226,6 +261,33 @@ function renderProfileBadge(badge, index) {
     : renderTieredProfileBadge(badge, index);
 }
 
+function positionProfileBadgeTooltip(item) {
+  const tooltip = item?.querySelector('.mp-badge-tooltip');
+  const scroll = document.getElementById('member-profile-content');
+  if (!tooltip || !scroll) return;
+
+  tooltip.classList.remove('tooltip-below');
+  requestAnimationFrame(() => {
+    const itemRect = item.getBoundingClientRect();
+    const scrollRect = scroll.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const needed = tooltipRect.height + 10;
+    const spaceAbove = itemRect.top - scrollRect.top;
+    const spaceBelow = scrollRect.bottom - itemRect.bottom;
+    if (spaceAbove < needed && spaceBelow > spaceAbove) {
+      tooltip.classList.add('tooltip-below');
+    }
+  });
+}
+
+function initializeProfileBadgeTooltips() {
+  document.querySelectorAll('.mp-badge-item').forEach(item => {
+    item.addEventListener('pointerenter', () => positionProfileBadgeTooltip(item));
+    item.addEventListener('focus', () => positionProfileBadgeTooltip(item));
+    item.addEventListener('touchstart', () => positionProfileBadgeTooltip(item), { passive:true });
+  });
+}
+
 function closeProfileBadgeDetail() {
   const detail = document.getElementById('mp-badge-detail');
   if (detail) {
@@ -247,6 +309,7 @@ function showProfileBadgeDetail(index) {
     const selected = Number(item.dataset.badgeIndex) === index;
     item.setAttribute('aria-expanded', selected ? 'true' : 'false');
     item.classList.toggle('selected', selected);
+    if (selected) positionProfileBadgeTooltip(item);
   });
 
   const tier = String(badge.tier || 'locked').toLowerCase();
@@ -362,6 +425,9 @@ function renderMemberProfile(profile) {
         <div class="mp-footer-cert">Frisco <span>C.E.R.T.</span> — Siren Warden Program</div>
       </div>
     </div>`;
+
+  initializeProfileBadgeTooltips();
+  requestAnimationFrame(syncMemberProfileViewport);
 }
 
 async function hydrateOwnMemberProfile() {
