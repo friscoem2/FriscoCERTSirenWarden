@@ -42,6 +42,21 @@ function updateLoggedInUserUI(profile) {
   if (avatar) avatar.textContent = initials;
 }
 
+
+function updateMemberProfileMenuSummary(profile) {
+  if (!profile || typeof profile !== 'object') return;
+  const avatar = document.getElementById('app-user-avatar');
+  const name = document.getElementById('app-user-name');
+  const usernameEl = document.getElementById('app-user-username');
+
+  if (avatar) avatar.textContent = profile.avatar || '🧑‍🚒';
+  if (name) name.textContent = profile.publicName || 'CERT Member';
+  if (usernameEl) {
+    const rank = [profile.rankEmoji, profile.rankName].filter(Boolean).join(' ');
+    usernameEl.textContent = rank ? `${rank} · Tap to view profile` : 'Tap to view profile';
+  }
+}
+
 function clearLoggedInUserUI() {
   const greeting = document.getElementById('header-greeting');
   const hello = document.getElementById('app-user-hello');
@@ -56,6 +71,7 @@ function clearLoggedInUserUI() {
   if (usernameEl) usernameEl.textContent = '';
   if (emailEl) emailEl.textContent = '';
   if (avatar) avatar.textContent = 'V';
+  if (typeof clearMemberProfileState === 'function') clearMemberProfileState();
   closeAppMenu(false);
 }
 
