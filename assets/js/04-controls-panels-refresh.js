@@ -118,39 +118,9 @@ function closeLeaderboard(){ document.getElementById('leaderboard-panel').classL
 function closeLbIfBg(e){ if(e.target===document.getElementById('leaderboard-panel')) closeLeaderboard(); }
 
 /* =====================================================
-   FORM MODAL
+   NATIVE FORMS
+   Form opening and submission now live in 10-native-forms.js.
    ===================================================== */
-function openForm(id,name){
-  document.getElementById('modal-title').textContent=`Volunteer — Siren #${id}: ${name}`;
-  document.getElementById('formIframe').src=GOOGLE_FORM_URL+'?embedded=true';
-  document.getElementById('formModal').classList.add('open');
-  document.body.style.overflow='hidden';
-  if (typeof closeAppMenu === 'function') closeAppMenu(false);
-}
-function closeModal(){
-  document.getElementById('formModal').classList.remove('open');
-  document.getElementById('formIframe').src='';
-  document.body.style.overflow='';
-  softRefresh();
-}
-window.addEventListener('click',e=>{ if(e.target===document.getElementById('formModal')) closeModal(); });
-
-/* =====================================================
-   SUGGESTION BOX
-   ===================================================== */
-function openSuggestionBox(){
-  document.getElementById('suggestIframe').src='https://docs.google.com/forms/d/e/1FAIpQLSeozkeabv9CJDhsBopiHXz4_POYjnoZlC5IFXUQxgh1kSSkIg/viewform?embedded=true';
-  document.getElementById('suggestModal').classList.add('open');
-  document.body.style.overflow='hidden';
-  if (typeof closeAppMenu === 'function') closeAppMenu(false);
-}
-function closeSuggestionBox(){
-  document.getElementById('suggestModal').classList.remove('open');
-  document.getElementById('suggestIframe').src='';
-  document.body.style.overflow='';
-  softRefresh();
-}
-window.addEventListener('click',e=>{ if(e.target===document.getElementById('suggestModal')) closeSuggestionBox(); });
 
 /* =====================================================
    UI HELPERS
