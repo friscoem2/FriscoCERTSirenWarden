@@ -1,4 +1,5 @@
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function inlineArg(s){ return esc(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/[\r\n]+/g,' '); }
 
 function maskEmail(email){
   if(!email || email.length < 5) return '***';
@@ -12,6 +13,7 @@ function buildPopup(siren, color){
   const mapsUrl= `https://www.google.com/maps?q=${siren.lat},${siren.lng}`;
   const imgSrc = driveImgSrc(siren.imageUrl,'w400');
   const imgSrcFull = driveImgSrc(siren.imageUrl,'w1200');
+  const isMyAssignment = typeof canCurrentUserReport === 'function' && canCurrentUserReport(siren);
 
   let badgeCls='badge-online';
   if(sLow==='canceled')      badgeCls='badge-canceled';
@@ -58,13 +60,16 @@ function buildPopup(siren, color){
         <div class="popup-row"><span class="popup-label">Sign-up</span><span class="popup-value">${siren.daysSinceSignup} days ago &nbsp;(${esc(siren.lastSignUpDate)})</span></div>
         <div class="popup-row"><span class="popup-label">Last Visit</span><span class="popup-value">${siren.daysSinceVisit} days ago &nbsp;(${esc(siren.lastVisitDate)})</span></div>`;
   } else {
-    const escapedEmail = esc(siren.currentSignup).replace(/'/g,"\\'");
     const masked = maskEmail(siren.currentSignup);
-    h+=`<div class="assigned-chip">✅ <span>Assigned: <strong>${esc(masked)}</strong></span></div>
-        <div class="popup-row"><span class="popup-label">Last Sign Up</span><span class="popup-value">${siren.daysSinceSignup} days ago &nbsp;(${esc(siren.lastSignUpDate)})</span></div>
-        <button class="popup-btn popup-btn-report" onclick="openReportGate(${siren.id},'${escapedEmail}')">📋 Report on This Siren</button>`;
+    const reportName = inlineArg(siren.friendlyName);
+    h+=`<div class="assigned-chip">✅ <span>${isMyAssignment ? 'Your Assignment' : `Assigned: <strong>${esc(masked)}</strong>`}</span></div>
+        <div class="popup-row"><span class="popup-label">Last Sign Up</span><span class="popup-value">${siren.daysSinceSignup} days ago &nbsp;(${esc(siren.lastSignUpDate)})</span></div>`;
+    if(isMyAssignment){
+      h+=`<button class="popup-btn popup-btn-report" onclick="openReportForm('${inlineArg(siren.id)}','${reportName}')">📋 Report on This Siren</button>`;
+    } else {
+      h+=`<div class="popup-report-note">🔒 Reporting is available to the assigned volunteer.</div>`;
+    }
   }
-
   if(siren.description && siren.description!=='N/A'){
     h+=`<hr class="popup-divider"><div class="info-box"><div class="info-box-label">📍 Location Notes</div>${esc(siren.description)}</div>`;
   }
@@ -75,8 +80,8 @@ function buildPopup(siren, color){
   h+=`</div><div class="popup-footer"><a href="${mapsUrl}" target="_blank" class="popup-btn popup-btn-maps">📍 Open in Google Maps</a>`;
 
   if(needsSU){
-    const sn=esc(siren.friendlyName).replace(/'/g,"\\'");
-    h+=`<button class="popup-btn popup-btn-green" onclick="openForm(${siren.id},'${sn}')">🙋 Volunteer for This Siren</button>`;
+    const sn=inlineArg(siren.friendlyName);
+    h+=`<button class="popup-btn popup-btn-green" onclick="openForm('${inlineArg(siren.id)}','${sn}')">🙋 Volunteer for This Siren</button>`;
   }
 
   h+=`</div></div>`;
@@ -84,71 +89,10 @@ function buildPopup(siren, color){
 }
 
 /* =====================================================
-   REPORT GATE
+   NATIVE REPORT FORM
+   Session-based report authorization and UI now live in
+   10-native-forms.js. The legacy email gate was removed.
    ===================================================== */
-let _reportExpectedEmail = '';
-let _reportSirenId = '';
-
-function openReportGate(sirenId, assignedEmail){
-  _reportSirenId = sirenId;
-  _reportExpectedEmail = (assignedEmail||'').trim().toLowerCase();
-  document.getElementById('reportEmailInput').value = '';
-  document.getElementById('reportGateError').textContent = '';
-  const btn = document.getElementById('reportGateBtn');
-  btn.disabled = false;
-  btn.textContent = 'Continue';
-  document.getElementById('reportGate').classList.add('open');
-  setTimeout(()=>document.getElementById('reportEmailInput').focus(), 200);
-}
-function closeReportGate(){ document.getElementById('reportGate').classList.remove('open'); }
-
-function submitReportGate(){
-  const input = document.getElementById('reportEmailInput');
-  const errEl = document.getElementById('reportGateError');
-  const typed = (input.value||'').trim().toLowerCase();
-  errEl.textContent = '';
-  if(!typed){ shakeEl(input); errEl.textContent='Please enter your email address.'; return; }
-  if(!typed.includes('@')){ shakeEl(input); errEl.textContent='Please enter a valid email address.'; return; }
-  if(_reportExpectedEmail && typed !== _reportExpectedEmail){
-    shakeEl(input);
-    errEl.textContent = 'Email does not match the volunteer on record.';
-    input.value = '';
-    return;
-  }
-  closeReportGate();
-  openReportForm(_reportSirenId);
-}
-
-function openReportForm(sirenId){
-  const formUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSePIb96jbsS4WM0RVeDaR2Iq9t2hnF26yqYdWTCGN90wdZHug/viewform?embedded=true';
-  document.getElementById('reportFormTitle').textContent = '📋 Siren #' + sirenId + ' Report';
-  document.getElementById('reportFormIframe').src = formUrl;
-  document.getElementById('reportFormModal').classList.add('open');
-}
-function closeReportForm(){
-  document.getElementById('reportFormModal').classList.remove('open');
-  document.getElementById('reportFormIframe').src = '';
-  softRefresh();
-}
-
-function shakeEl(el){
-  el.classList.remove('shake');
-  void el.offsetWidth;
-  el.classList.add('shake');
-  setTimeout(()=>el.classList.remove('shake'), 500);
-}
-
-document.addEventListener('DOMContentLoaded', ()=>{
-  document.getElementById('reportGate').addEventListener('click', e=>{
-    if(e.target === document.getElementById('reportGate')) closeReportGate();
-  });
-  document.getElementById('reportFormModal').addEventListener('click', e=>{
-    if(e.target === document.getElementById('reportFormModal')) closeReportForm();
-  });
-  document.getElementById('reportEmailInput').addEventListener('keydown', e=>{
-    if(e.key==='Enter') submitReportGate();
-  });
-});
 
 /* =====================================================
    PHOTO LIGHTBOX
