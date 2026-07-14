@@ -416,6 +416,36 @@
     throw new Error('Unknown form type.');
   }
 
+  function formatSubmissionError(response, data) {
+    const baseMessage = data?.error?.message || data?.error || `Submission failed with HTTP ${response.status}.`;
+    const debug = data?.error?.debug;
+    const lines = [String(baseMessage)];
+
+    if (!debug || typeof debug !== 'object') {
+      lines.push('', 'Debug notes:', `• HTTP status: ${response.status}`, '• No structured debug details were returned by the server.');
+      return lines.join('\n');
+    }
+
+    lines.push('', 'Debug notes:');
+    if (debug.requestId) lines.push(`• Request ID: ${debug.requestId}`);
+    lines.push(`• HTTP status: ${debug.status || response.status}`);
+    if (debug.stage) lines.push(`• Failure stage: ${debug.stage}`);
+    if (debug.formType) lines.push(`• Form type: ${debug.formType}`);
+    if (debug.destinationSheet) lines.push(`• Destination tab: ${debug.destinationSheet}`);
+    if (debug.googleHttpStatus) lines.push(`• Google HTTP status: ${debug.googleHttpStatus}`);
+    if (debug.googleStatus) lines.push(`• Google status: ${debug.googleStatus}`);
+    if (debug.detail) lines.push(`• Detail: ${debug.detail}`);
+
+    const missing = Array.isArray(debug.missingEnvironmentVariables)
+      ? debug.missingEnvironmentVariables.filter(Boolean)
+      : [];
+    if (missing.length) lines.push(`• Missing Vercel variables: ${missing.join(', ')}`);
+
+    const hints = Array.isArray(debug.hints) ? debug.hints.filter(Boolean) : [];
+    for (const hint of hints) lines.push(`• Check: ${hint}`);
+    return lines.join('\n');
+  }
+
   function showFormError(message) {
     const error = document.getElementById('native-form-error');
     if (!error) return;
@@ -475,7 +505,7 @@
         throw new Error('Your login session expired. Please log in and submit again.');
       }
       if (!response.ok) {
-        throw new Error(data.error?.message || data.error || `Submission failed with HTTP ${response.status}.`);
+        throw new Error(formatSubmissionError(response, data));
       }
 
       showFormSuccess(form.dataset.formType, data);
