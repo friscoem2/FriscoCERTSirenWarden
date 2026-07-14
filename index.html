@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="assets/css/07-volunteer-tour.css">
   <link rel="stylesheet" href="assets/css/08-user-menu.css">
   <link rel="stylesheet" href="assets/css/09-member-profile.css">
+  <link rel="stylesheet" href="assets/css/10-native-forms.css">
 </head>
 <body>
 <div id="app">
@@ -261,56 +262,20 @@
   </div>
 </div>
 
-<!-- REPORT EMAIL GATE -->
-<div id="reportGate">
-  <div class="rg-card">
-    <button class="rg-close" onclick="closeReportGate()">✕</button>
-    <img class="rg-logo" src="https://drive.google.com/thumbnail?id=16Lg4zmmXXKSeqZXpguuJMuZVAh3Xu9dv&sz=w200" alt="CERT Logo">
-    <div class="rg-title">Siren Report</div>
-    <div class="rg-sub">Authorized Volunteers Only</div>
-    <div class="rg-accent"></div>
-    <div class="rg-label">Enter your email address to<br>access the report form</div>
-    <input id="reportEmailInput" class="rg-input" type="email" placeholder="your@email.com" autocomplete="email" />
-    <button class="rg-btn" id="reportGateBtn" onclick="submitReportGate()">Continue</button>
-    <div class="rg-error" id="reportGateError"></div>
-  </div>
-</div>
-
-<!-- REPORT FORM MODAL -->
-<div id="reportFormModal">
-  <div class="rf-sheet">
-    <div class="rf-header">
-      <span class="rf-title" id="reportFormTitle">📋 Siren Report</span>
-      <button class="rf-close" onclick="closeReportForm()">✕</button>
-    </div>
-    <iframe class="rf-iframe" id="reportFormIframe" src="" frameborder="0"></iframe>
-  </div>
-</div>
-
-<!-- VOLUNTEER FORM MODAL -->
-<div id="formModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2 id="modal-title">Volunteer Sign-Up</h2>
-      <button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button>
-    </div>
-    <div class="modal-body">
-      <iframe id="formIframe" src="" frameborder="0"></iframe>
-    </div>
-  </div>
-</div>
-
-<!-- SUGGESTION BOX MODAL -->
-<div id="suggestModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>🗳️ Suggestion Box</h2>
-      <button class="modal-close" onclick="closeSuggestionBox()" aria-label="Close">✕</button>
-    </div>
-    <div class="modal-body">
-      <iframe id="suggestIframe" src="" frameborder="0"></iframe>
-    </div>
-  </div>
+<!-- NATIVE APP FORM PANEL -->
+<div id="native-form-modal" onclick="closeNativeFormFromBackdrop(event)" aria-hidden="true">
+  <section class="native-form-sheet" role="dialog" aria-modal="true" aria-labelledby="native-form-title">
+    <header class="native-form-header">
+      <div class="native-form-heading-icon" id="native-form-icon">📋</div>
+      <div class="native-form-heading-copy">
+        <span class="native-form-kicker" id="native-form-kicker">CERT form</span>
+        <span class="native-form-title" id="native-form-title">Volunteer Form</span>
+        <span class="native-form-subtitle" id="native-form-subtitle">Frisco Outdoor Warning Siren Map</span>
+      </div>
+      <button class="native-form-close" type="button" onclick="closeNativeForm({refresh:false})" aria-label="Close form">✕</button>
+    </header>
+    <div class="native-form-scroll" id="native-form-scroll"></div>
+  </section>
 </div>
 
 <!-- VOLUNTEER ORIENTATION TOUR -->
@@ -346,5 +311,6 @@
 <script src="assets/js/07-volunteer-tour.js"></script>
 <script src="assets/js/08-user-menu.js"></script>
 <script src="assets/js/09-member-profile.js"></script>
+<script src="assets/js/10-native-forms.js"></script>
 </body>
 </html>
