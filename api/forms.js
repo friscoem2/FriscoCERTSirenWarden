@@ -7,6 +7,7 @@ const {
 const { findProfileByUsername } = require('../lib/profile-store');
 const { fetchWholeSheetByTitle } = require('../lib/google-sheets');
 const { appendSheetRow, isWriteConfigurationPresent } = require('../lib/google-sheets-write');
+const crypto = require('crypto');
 
 const FORM_TAB_DEFAULTS = {
   signup: 'Sign Ups',
@@ -85,6 +86,116 @@ class FormValidationError extends Error {
     this.name = 'FormValidationError';
     this.status = status;
   }
+}
+
+
+const SECRET_ENV_NAMES = [
+  'SESSION_SECRET',
+  'GOOGLE_SHEETS_API_KEY',
+  'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY',
+  'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64',
+  'GOOGLE_PRIVATE_KEY',
+];
+
+function hasEnv(name) {
+  return Boolean(String(process.env[name] || '').trim());
+}
+
+function writeConfigurationStatus() {
+  const privateKeyPresent = hasEnv('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY')
+    || hasEnv('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64')
+    || hasEnv('GOOGLE_PRIVATE_KEY');
+  return {
+    GOOGLE_SHEET_ID: hasEnv('GOOGLE_SHEET_ID'),
+    GOOGLE_SERVICE_ACCOUNT_EMAIL: hasEnv('GOOGLE_SERVICE_ACCOUNT_EMAIL'),
+    GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: privateKeyPresent,
+  };
+}
+
+function missingWriteConfiguration() {
+  const status = writeConfigurationStatus();
+  return Object.entries(status).filter(([, present]) => !present).map(([name]) => name);
+}
+
+function redactSecrets(value) {
+  let output = String(value || 'Unknown server error.');
+  for (const name of SECRET_ENV_NAMES) {
+    const secret = String(process.env[name] || '');
+    if (secret && secret.length >= 6) output = output.split(secret).join('[redacted]');
+  }
+  return output
+    .replace(/-----BEGIN [^-]+-----[\s\S]*?-----END [^-]+-----/gi, '[redacted private key]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+    .replace(/\bya29\.[A-Za-z0-9._-]+/g, '[redacted access token]')
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted JWT]')
+    .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, '[redacted API key]')
+    .slice(0, 700);
+}
+
+function inferDebugStage(error) {
+  if (error?.stage) return String(error.stage);
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('private key') || message.includes('jwt')) return 'service_account_jwt';
+  if (message.includes('authorization') || message.includes('oauth')) return 'google_authorization';
+  if (message.includes('append') || message.includes('google sheets')) return 'google_sheets_append';
+  if (message.includes('siren')) return 'siren_lookup';
+  if (message.includes('profile')) return 'member_profile_lookup';
+  return 'server';
+}
+
+function debugHints(error, missing = []) {
+  if (missing.length) {
+    return [
+      `Add the missing Vercel variable${missing.length === 1 ? '' : 's'} and redeploy.`,
+      'Make sure the variables are enabled for the environment you are testing: Production, Preview, or Development.',
+    ];
+  }
+
+  const stage = inferDebugStage(error);
+  const detail = String(error?.message || '').toLowerCase();
+  if (stage === 'service_account_jwt') {
+    return [
+      'Verify that the private key includes the full BEGIN/END PRIVATE KEY block.',
+      'If Vercel newline formatting is causing problems, use GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64 instead.',
+    ];
+  }
+  if (stage === 'google_authorization') {
+    return [
+      'Confirm the service-account email and private key came from the same Google service-account JSON file.',
+      'Confirm the Google Sheets API is enabled in the Google Cloud project.',
+    ];
+  }
+  if (stage === 'google_sheets_append') {
+    const hints = [
+      'Share the destination spreadsheet with the service-account email as an Editor.',
+      'Confirm the destination tab name exactly matches the Vercel environment variable, including spaces and capitalization.',
+    ];
+    if (detail.includes('permission') || Number(error?.httpStatus) === 403) {
+      hints.unshift('Google rejected the write permission for this service account.');
+    }
+    if (detail.includes('unable to parse range') || Number(error?.httpStatus) === 404) {
+      hints.unshift('The spreadsheet or destination tab could not be found.');
+    }
+    return hints;
+  }
+  return ['Check the matching Vercel Function log using the request ID below.'];
+}
+
+function buildDebugPayload({ error, requestId, formType, destinationSheet, status = 500 }) {
+  const missing = missingWriteConfiguration();
+  return {
+    requestId,
+    status,
+    stage: inferDebugStage(error),
+    formType: formType || 'unknown',
+    destinationSheet: destinationSheet || 'unknown',
+    googleHttpStatus: Number(error?.httpStatus || 0) || null,
+    googleStatus: redactSecrets(error?.googleStatus || ''),
+    detail: redactSecrets(error?.reason || error?.message || error),
+    missingEnvironmentVariables: missing,
+    configurationPresent: writeConfigurationStatus(),
+    hints: debugHints(error, missing),
+  };
 }
 
 async function resolveSiren(sirenId) {
@@ -236,6 +347,10 @@ async function submitSuggestion(body) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  const requestId = crypto.randomUUID();
+  res.setHeader('X-Form-Request-Id', requestId);
+  let formType = '';
+  let destinationSheet = '';
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -255,16 +370,27 @@ module.exports = async function handler(req, res) {
       return res.status(403).json({ error: { message: 'No CERT Members profile is configured for this login.' } });
     }
 
+    const body = getBody(req);
+    formType = cleanText(body.formType, 30).toLowerCase();
+    destinationSheet = ['signup', 'report', 'suggestion'].includes(formType) ? sheetNameFor(formType) : '';
+
     if (!isWriteConfigurationPresent()) {
+      const setupError = new Error('One or more Google Sheets write environment variables are missing.');
+      setupError.stage = 'configuration';
       return res.status(503).json({
         error: {
           message: 'Form writing is ready, but Google service-account credentials have not been configured in Vercel yet.',
+          debug: buildDebugPayload({
+            error: setupError,
+            requestId,
+            formType,
+            destinationSheet,
+            status: 503,
+          }),
         },
       });
     }
 
-    const body = getBody(req);
-    const formType = cleanText(body.formType, 30).toLowerCase();
     let result;
 
     if (formType === 'signup') result = await submitSignup(body, profile);
@@ -277,9 +403,25 @@ module.exports = async function handler(req, res) {
     if (error instanceof FormValidationError) {
       return res.status(error.status || 400).json({ error: { message: error.message } });
     }
-    console.error('Native form submission failed:', error.message);
+    const debug = buildDebugPayload({
+      error,
+      requestId,
+      formType,
+      destinationSheet,
+      status: 500,
+    });
+    console.error('Native form submission failed:', {
+      requestId,
+      stage: debug.stage,
+      formType: debug.formType,
+      destinationSheet: debug.destinationSheet,
+      detail: debug.detail,
+    });
     return res.status(500).json({
-      error: { message: 'The form could not be written to Google Sheets. Please try again.' },
+      error: {
+        message: 'The form could not be written to Google Sheets. Please try again.',
+        debug,
+      },
     });
   }
 };
