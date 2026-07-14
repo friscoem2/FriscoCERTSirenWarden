@@ -408,6 +408,8 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .native-form-error.visible { display: block; }
 
