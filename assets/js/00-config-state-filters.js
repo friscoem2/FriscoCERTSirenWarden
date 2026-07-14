@@ -3,7 +3,6 @@
    Sensitive Google Sheets configuration now lives only in
    Vercel environment variables and server-side functions.
    ===================================================== */
-const GOOGLE_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeyQ8Gp6FpR8mIyrB6KFG-cmBw2BMQNoXgKpdSg9f4QnkW9Eg/viewform';
 
 /* =====================================================
    STATE
