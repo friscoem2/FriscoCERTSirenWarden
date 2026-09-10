@@ -110,9 +110,9 @@ async function openOwnProfile() {
   memberProfileReturnFocus = document.getElementById('app-menu-button') || memberProfileReturnFocus;
   showMemberProfileLoading();
   try {
-    const data = ownMemberProfile
-      ? { profile: ownMemberProfile }
-      : await fetchMemberProfileJson('/api/profile');
+    // Opening your own profile is an explicit refresh action. Bypass both the
+    // browser-side cached object and the server's short Google Sheets cache.
+    const data = await fetchMemberProfileJson('/api/profile?fresh=1');
     ownMemberProfile = data.profile;
     window.currentMemberProfile = ownMemberProfile;
     if (typeof updateMemberProfileMenuSummary === 'function') {

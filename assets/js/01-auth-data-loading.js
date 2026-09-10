@@ -68,6 +68,15 @@ async function initLogin(){
   (rememberedUsername ? passwordInput : usernameInput).focus();
 }
 
+function shakeEl(element){
+  if (!element) return;
+  // Restart the existing CSS animation even when consecutive login attempts fail.
+  element.classList.remove('shake');
+  void element.offsetWidth;
+  element.classList.add('shake');
+  window.setTimeout(() => element.classList.remove('shake'), 450);
+}
+
 async function submitLogin(event){
   if (event) event.preventDefault();
 
