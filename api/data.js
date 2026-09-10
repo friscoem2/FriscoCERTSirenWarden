@@ -5,6 +5,8 @@ const {
   clearSessionCookie,
 } = require('../lib/session-token');
 const { requireEnv, fetchWholeSheetByTitle } = require('../lib/google-sheets');
+const { findProfileByUsername } = require('../lib/profile-store');
+const { getAssignmentStatus } = require('../lib/assignment-status');
 
 function getResourceName(req) {
   const value = req.query?.resource;
@@ -38,6 +40,16 @@ module.exports = async function handler(req, res) {
     }
 
     const resource = String(getResourceName(req) || '').trim().toLowerCase();
+
+    if (resource === 'assignment-status') {
+      const profile = await findProfileByUsername(session.sub);
+      if (!profile) {
+        return res.status(403).json({ error: { message: 'No CERT Members profile is configured for this login.' } });
+      }
+      const status = await getAssignmentStatus(profile);
+      return res.status(200).json(status);
+    }
+
     const sheetTitle = getConfiguredSheet(resource);
     if (!sheetTitle) {
       return res.status(400).json({ error: { message: 'Unknown data resource.' } });

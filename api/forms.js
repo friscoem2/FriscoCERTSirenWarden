@@ -7,6 +7,7 @@ const {
 const { findProfileByUsername } = require('../lib/profile-store');
 const { fetchWholeSheetByTitle } = require('../lib/google-sheets');
 const { appendSheetRow, isWriteConfigurationPresent } = require('../lib/google-sheets-write');
+const { getAssignmentStatus } = require('../lib/assignment-status');
 const crypto = require('crypto');
 
 const FORM_TAB_DEFAULTS = {
@@ -226,6 +227,12 @@ function sirenSignupSheetLabel(siren) {
   return `${siren.id} - ${siren.friendlyName}`;
 }
 
+function formatSheetDate(isoDate) {
+  const [year, month, day] = String(isoDate || '').split('-').map(Number);
+  if (!year || !month || !day) throw new FormValidationError('Please select a valid observation date.');
+  return `${month}/${day}/${year}`;
+}
+
 function profileAssignmentId(profile) {
   const raw = cleanText(profile['Current Assignment'] || profile.currentAssignment || '', 200);
   if (!raw || /^(none|n\/a|unassigned)$/i.test(raw)) return '';
@@ -247,15 +254,25 @@ async function findActiveAssignmentByEmail(email) {
   };
 }
 
-function ensureAssignedToProfile(siren, profile) {
+function isDirectlyAssignedToProfile(siren, profile) {
   const expected = profileEmail(profile).toLowerCase();
   const assigned = cleanText(siren.currentSignup, 254).toLowerCase();
-  if (!expected || !assigned || expected !== assigned) {
-    throw new FormValidationError(
-      'This siren report is limited to the volunteer currently assigned to the selected siren.',
-      403
-    );
-  }
+  return Boolean(expected && assigned && expected === assigned);
+}
+
+async function ensureAssignedToProfile(siren, profile) {
+  if (isDirectlyAssignedToProfile(siren, profile)) return;
+
+  // A just-submitted signup can reach the Sign Ups tab before the calculated
+  // currentSignup field on the Sirens tab refreshes. Accept that newest pending
+  // assignment so the volunteer can report without waiting for formulas.
+  const status = await getAssignmentStatus(profile);
+  if (status.assignmentLockRequired && String(status.activeAssignment?.id || '') === String(siren.id)) return;
+
+  throw new FormValidationError(
+    'This siren report is limited to the volunteer currently assigned to the selected siren.',
+    403
+  );
 }
 
 function validateEmail(value, optional = false) {
@@ -284,13 +301,13 @@ async function submitSignup(body, profile) {
   const email = validateEmail(profileEmail(profile));
   const username = cleanText(profile.Username, 200);
 
-  // A volunteer may only hold one active siren assignment at a time.
-  // Check the live siren sheet first, with the profile assignment as a fallback.
-  const existingAssignment = await findActiveAssignmentByEmail(email);
-  const profileAssignedId = profileAssignmentId(profile);
-  if (existingAssignment || profileAssignedId) {
-    const assignedId = existingAssignment?.id || profileAssignedId;
-    const assignedName = existingAssignment?.friendlyName || '';
+  // Lock only while the volunteer has a signup that has not yet been completed
+  // by a later siren report. Once that report is submitted, they may volunteer
+  // for another siren; the newer signup then becomes the next active lock.
+  const assignmentStatus = await getAssignmentStatus(profile);
+  if (assignmentStatus.assignmentLockRequired) {
+    const assignedId = assignmentStatus.activeAssignment?.id || profileAssignmentId(profile);
+    const assignedName = assignmentStatus.activeAssignment?.friendlyName || '';
     const label = `Siren #${assignedId}${assignedName ? ` — ${assignedName}` : ''}`;
     throw new FormValidationError(
       `You already have an active siren assignment (${label}). Submit your report for that assignment before volunteering for another siren.`,
@@ -313,7 +330,7 @@ async function submitSignup(body, profile) {
 
 async function submitReport(body, profile) {
   const siren = await resolveSiren(body.sirenId);
-  ensureAssignedToProfile(siren, profile);
+  await ensureAssignedToProfile(siren, profile);
 
   const observationDate = validateDate(body.observationDate);
   const heardSiren = cleanText(body.heardSiren, 20);
@@ -336,8 +353,8 @@ async function submitReport(body, profile) {
     centralTimestamp(),
     profileName(profile),
     validateEmail(profileEmail(profile)),
-    sirenDisplayName(siren),
-    observationDate,
+    sirenSignupSheetLabel(siren),
+    formatSheetDate(observationDate),
     heardSiren,
     damageOverall,
     sirenDamage.join('; '),
