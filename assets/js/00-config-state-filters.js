@@ -21,12 +21,20 @@ let wxFabOpen      = false;
 
 // Filter state — matches data-filter attrs; false = hidden
 let activeFilters = { assigned:false, active:true, attention:true, action:true, urgent:true };
+// Once a volunteer has an assignment, lock their map into personal Report Mode.
+// This is intentionally session-local as well as data-driven so the UI locks
+// immediately after a successful sign-up, even if Sheet formulas need a moment.
+let assignedReportSirenId = null;
+let assignedReportSirenSeenAt = 0;
+const ASSIGNMENT_SYNC_GRACE_MS = 90 * 1000;
 // Marker registry for filtering: { sirenId: { marker, category } }
 let markerRegistry = {};
 let filterPanelOpen = false;
 
 /* Map siren data → filter category */
 function sirenCategory(s){
+  const assignedId = currentAssignedSirenId();
+  if(assignedId && String(s.id) === String(assignedId)) return 'assigned';
   if((s.signUpNeeded||'').toLowerCase()!=='yes') return 'assigned';
   const d = urgencyDays(s);
   if(d<=7)  return 'active';
@@ -35,12 +43,119 @@ function sirenCategory(s){
   return 'urgent';
 }
 
+function assignmentProfileEmail(){
+  const profile = window.currentUserProfile || {};
+  return String(profile.EmailAddress || profile.Email || profile['Email Address'] || '').trim().toLowerCase();
+}
+
+function assignmentIdFromProfile(){
+  const profile = window.currentUserProfile || {};
+  const raw = String(
+    profile['Current Assignment'] ||
+    profile.currentAssignment ||
+    ''
+  ).trim();
+  if(!raw || /^(none|n\/a|unassigned)$/i.test(raw)) return null;
+  const match = raw.match(/(?:siren\s*#?\s*)?(\d+)/i);
+  return match ? match[1] : null;
+}
+
+function detectAssignedSirenId(sirens){
+  const email = assignmentProfileEmail();
+
+  // The live siren data is authoritative once it is available.
+  if(email && Array.isArray(sirens) && sirens.length){
+    const match = sirens.find(s => String(s.currentSignup || '').trim().toLowerCase() === email);
+    if(match){
+      assignedReportSirenId = String(match.id);
+      assignedReportSirenSeenAt = Date.now();
+      return assignedReportSirenId;
+    }
+
+    // Immediately after signup the Sign Ups append can land a little before
+    // formulas/currentSignup refresh. Preserve the local lock briefly so the
+    // user cannot see or reserve another siren during that propagation window.
+    if(assignedReportSirenId && Date.now() - assignedReportSirenSeenAt < ASSIGNMENT_SYNC_GRACE_MS){
+      return String(assignedReportSirenId);
+    }
+
+    assignedReportSirenId = null;
+    assignedReportSirenSeenAt = 0;
+    return null;
+  }
+
+  // Fallback for the short period before siren data is loaded.
+  return assignedReportSirenId || assignmentIdFromProfile();
+}
+
+function syncFilterRows(){
+  document.querySelectorAll('#filter-panel .fp-row').forEach(r=>{
+    r.classList.toggle('checked', Boolean(activeFilters[r.dataset.filter]));
+  });
+}
+
+function setAssignedReportMode(sirenId){
+  const normalized = String(sirenId || '').trim();
+  if(!normalized) return false;
+  if(String(assignedReportSirenId || '') !== normalized || !assignedReportSirenSeenAt){
+    assignedReportSirenSeenAt = Date.now();
+  }
+  assignedReportSirenId = normalized;
+  activeFilters = { assigned:true, active:false, attention:false, action:false, urgent:false };
+  syncFilterRows();
+  applyFilters();
+  updateFilterBtnState();
+  const entry = markerRegistry[normalized];
+  if(entry?.marker && map) map.panTo(entry.marker.getLatLng());
+  return true;
+}
+
+function syncAssignedReportMode(sirens){
+  const hadAssignment = Boolean(assignedReportSirenId);
+  const assignedId = detectAssignedSirenId(sirens);
+  if(assignedId){
+    setAssignedReportMode(assignedId);
+  } else if(hadAssignment){
+    activeFilters = { assigned:false, active:true, attention:true, action:true, urgent:true };
+    syncFilterRows();
+    applyFilters();
+    updateFilterBtnState();
+  }
+  return assignedId;
+}
+
+function clearAssignedReportMode(){
+  assignedReportSirenId = null;
+  assignedReportSirenSeenAt = 0;
+  activeFilters = { assigned:false, active:true, attention:true, action:true, urgent:true };
+  syncFilterRows();
+  updateFilterBtnState();
+}
+
+function currentAssignedSirenId(){
+  return detectAssignedSirenId(typeof allSirens !== 'undefined' ? allSirens : []);
+}
+
+function shouldShowSirenMarker(sirenId, category){
+  const assignedId = currentAssignedSirenId();
+  if(assignedId) return String(sirenId) === String(assignedId);
+  return Boolean(activeFilters[category]);
+}
+
 function toggleFilterPanel(){
   filterPanelOpen = !filterPanelOpen;
   document.getElementById('filter-panel').classList.toggle('open', filterPanelOpen);
 }
 
 function toggleFilter(row){
+  // Assigned volunteers stay in personal Report Mode until their assignment clears.
+  if(currentAssignedSirenId()){
+    activeFilters = { assigned:true, active:false, attention:false, action:false, urgent:false };
+    syncFilterRows();
+    applyFilters();
+    updateFilterBtnState();
+    return;
+  }
   const key = row.dataset.filter;
   activeFilters[key] = !activeFilters[key];
   row.classList.toggle('checked', activeFilters[key]);
@@ -49,34 +164,51 @@ function toggleFilter(row){
 }
 
 function resetFilters(){
-  activeFilters = { assigned:false, active:true, attention:true, action:true, urgent:true };
-  document.querySelectorAll('#filter-panel .fp-row').forEach(r=>{
-    r.classList.toggle('checked', activeFilters[r.dataset.filter]);
-  });
+  if(currentAssignedSirenId()){
+    activeFilters = { assigned:true, active:false, attention:false, action:false, urgent:false };
+  } else {
+    activeFilters = { assigned:false, active:true, attention:true, action:true, urgent:true };
+  }
+  syncFilterRows();
   applyFilters();
   updateFilterBtnState();
 }
 
 function updateFilterBtnState(){
+  const hasAssignment = Boolean(currentAssignedSirenId());
   const isDefault = !activeFilters.assigned && activeFilters.active && activeFilters.attention && activeFilters.action && activeFilters.urgent;
-  document.getElementById('filter-btn').classList.toggle('filtered', !isDefault);
-  // Report view active = assigned only — highlight the drawer menu item
-  const isReportView = activeFilters.assigned && !activeFilters.active && !activeFilters.attention && !activeFilters.action && !activeFilters.urgent;
+  const filterBtn = document.getElementById('filter-btn');
+  if(filterBtn) filterBtn.classList.toggle('filtered', hasAssignment || !isDefault);
+  // Report view active = assigned only — highlight the drawer menu item.
+  const isReportView = hasAssignment || (activeFilters.assigned && !activeFilters.active && !activeFilters.attention && !activeFilters.action && !activeFilters.urgent);
   const fabReport = document.getElementById('fab-report');
-  if(fabReport) fabReport.classList.toggle('active', isReportView);
+  if(fabReport){
+    fabReport.classList.toggle('active', isReportView);
+    const label = fabReport.querySelector('span:last-child');
+    if(label) label.textContent = hasAssignment ? 'My Assigned Siren' : 'Report View';
+  }
 }
 
 function toggleReportView(){
-  // If already in report view, reset to default; otherwise switch to assigned-only
-  const isReportView = activeFilters.assigned && !activeFilters.active && !activeFilters.attention && !activeFilters.action && !activeFilters.urgent;
-  if(isReportView){
-    activeFilters = { assigned:false, active:true, attention:true, action:true, urgent:true };
+  const assignedId = currentAssignedSirenId();
+  if(assignedId){
+    // A signed-up volunteer is permanently in personal Report Mode while assigned.
+    setAssignedReportMode(assignedId);
+    const entry = markerRegistry[assignedId];
+    if(entry?.marker && map){
+      map.panTo(entry.marker.getLatLng());
+      entry.marker.openPopup();
+    }
   } else {
-    activeFilters = { assigned:true, active:false, attention:false, action:false, urgent:false };
+    // Unassigned volunteers can still use the general assigned-only Report View.
+    const isReportView = activeFilters.assigned && !activeFilters.active && !activeFilters.attention && !activeFilters.action && !activeFilters.urgent;
+    if(isReportView){
+      activeFilters = { assigned:false, active:true, attention:true, action:true, urgent:true };
+    } else {
+      activeFilters = { assigned:true, active:false, attention:false, action:false, urgent:false };
+    }
+    syncFilterRows();
   }
-  document.querySelectorAll('#filter-panel .fp-row').forEach(r=>{
-    r.classList.toggle('checked', activeFilters[r.dataset.filter]);
-  });
   // Close filter panel if open
   filterPanelOpen = false;
   document.getElementById('filter-panel').classList.remove('open');
@@ -87,7 +219,7 @@ function toggleReportView(){
 function applyFilters(){
   if(!map) return;
   Object.entries(markerRegistry).forEach(([id, {marker, category}])=>{
-    if(activeFilters[category]){
+    if(shouldShowSirenMarker(id, category)){
       if(!map.hasLayer(marker)) marker.addTo(map);
     } else {
       if(map.hasLayer(marker)) map.removeLayer(marker);

@@ -148,6 +148,8 @@ function softRefresh(){
 
       // Store updated siren list for coverage mode
       allSirens = sirens;
+      window.allSirens = sirens;
+      if(typeof syncAssignedReportMode === 'function') syncAssignedReportMode(sirens);
 
       // Remove all existing markers from the map
       Object.values(markerRegistry).forEach(({marker}) => {
@@ -160,6 +162,8 @@ function softRefresh(){
 
       // Re-add all markers with fresh data
       sirens.forEach(addMarker);
+      applyFilters();
+      updateFilterBtnState();
 
       // Update lives protected counter
       const lives = calcLivesProtected(sirens);

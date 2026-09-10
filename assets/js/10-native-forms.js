@@ -102,6 +102,8 @@
     const siren = typeof sirenOrId === 'object' && sirenOrId
       ? sirenOrId
       : findSiren(sirenOrId);
+    const lockedId = typeof currentAssignedSirenId === 'function' ? currentAssignedSirenId() : '';
+    if (lockedId && String(siren?.id || '') === String(lockedId)) return true;
     const memberEmail = normalizedEmail(profileEmail());
     const assignedEmail = normalizedEmail(siren?.currentSignup);
     return Boolean(memberEmail && assignedEmail && memberEmail === assignedEmail);
@@ -176,6 +178,14 @@
 
   function openSignupForm(sirenId, sirenName = '') {
     const siren = findSiren(sirenId, sirenName);
+    const assignedId = typeof currentAssignedSirenId === 'function' ? currentAssignedSirenId() : '';
+    if (assignedId) {
+      const assignedSiren = findSiren(assignedId);
+      showTransientFormError(
+        `You already have an active assignment at Siren #${assignedSiren.id}${assignedSiren.friendlyName ? ` — ${assignedSiren.friendlyName}` : ''}. Report Mode only allows your currently assigned siren until that assignment is cleared.`
+      );
+      return;
+    }
     formState = { type: 'signup', siren, submitting: false };
     setHeading('🙋', 'Volunteer sign-up', `Siren #${siren.id}`, siren.friendlyName || 'Outdoor warning siren');
 
@@ -520,8 +530,21 @@
   }
 
   function showFormSuccess(type, data) {
+    if (type === 'signup' && formState.siren) {
+      const assignedId = String(formState.siren.id || '').trim();
+      const email = profileEmail();
+      const source = Array.isArray(window.allSirens) ? window.allSirens : (typeof allSirens !== 'undefined' ? allSirens : []);
+      const localSiren = source.find(item => String(item.id || '').trim() === assignedId);
+      if (localSiren) {
+        localSiren.signUpNeeded = 'No';
+        localSiren.currentSignup = email;
+        localSiren.daysSinceSignup = 0;
+      }
+      if (typeof setAssignedReportMode === 'function') setAssignedReportMode(assignedId);
+    }
+
     const messages = {
-      signup: ['You’re Signed Up!', `Siren #${htmlEscape(formState.siren?.id || '')} is now linked to your submission. The map may take a moment to reflect the new assignment.`],
+      signup: ['You’re Signed Up!', `Siren #${htmlEscape(formState.siren?.id || '')} is now your active assignment. Report Mode has been enabled automatically, so only your assigned siren will appear on the map.`],
       report: ['Report Submitted', 'Thank you. Your observation was added to the siren report sheet.'],
       suggestion: ['Suggestion Sent', 'Thank you for helping improve the Frisco Outdoor Warning Siren Map.'],
     };

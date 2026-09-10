@@ -166,6 +166,7 @@ function expireLocalSession(){
   sessionExpiresAt = 0;
   currentUserProfile = null;
   window.currentUserProfile = null;
+  if (typeof clearAssignedReportMode === 'function') clearAssignedReportMode();
   if (typeof clearLoggedInUserUI === 'function') clearLoggedInUserUI();
   showLoginScreen('Your 30-minute session has expired. Please log in again.');
 }
@@ -270,6 +271,8 @@ function urgencyDays(s){
   return Math.min(a,b);
 }
 function sirenColor(s){
+  const assignedId = typeof currentAssignedSirenId === 'function' ? currentAssignedSirenId() : '';
+  if(assignedId && String(s.id) === String(assignedId)) return '#6b7280';
   if((s.signUpNeeded||'').toLowerCase()!=='yes') return '#6b7280';
   const d=urgencyDays(s);
   if(d<=7)  return '#10b981';
@@ -278,6 +281,8 @@ function sirenColor(s){
   return '#dc2626';
 }
 function urgencyLabel(s){
+  const assignedId = typeof currentAssignedSirenId === 'function' ? currentAssignedSirenId() : '';
+  if(assignedId && String(s.id) === String(assignedId)) return null;
   if((s.signUpNeeded||'').toLowerCase()!=='yes') return null;
   const d=urgencyDays(s);
   if(d<=7)  return{text:'Recent Activity ✓',      bg:'#d1fae5',color:'#065f46'};

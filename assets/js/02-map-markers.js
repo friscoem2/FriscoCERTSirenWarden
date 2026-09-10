@@ -4,6 +4,8 @@ function initMap(sirens){
   startFreshnessTimer();
 
   allSirens = sirens; // store for coverage mode
+  window.allSirens = sirens;
+  if(typeof syncAssignedReportMode === 'function') syncAssignedReportMode(sirens);
 
   const lives = calcLivesProtected(sirens);
   const livesEl = document.getElementById('lives-count');
@@ -32,7 +34,14 @@ function initMap(sirens){
   if(popupPane) popupPane.style.zIndex = '2000';
 
   sirens.forEach(addMarker);
+  applyFilters();
+  updateFilterBtnState();
   addLegend();
+
+  // Assigned volunteers enter personal Report Mode focused on their siren.
+  const assignedId = typeof currentAssignedSirenId === 'function' ? currentAssignedSirenId() : '';
+  const assignedMarker = assignedId ? markerRegistry[assignedId]?.marker : null;
+  if(assignedMarker) map.setView(assignedMarker.getLatLng(), 14);
 
   // Soft-refresh data whenever a popup is closed
   map.on('popupclose', () => softRefresh());
@@ -66,8 +75,10 @@ function addMarker(siren){
   // Register for filter system
   const category = sirenCategory(siren);
   markerRegistry[siren.id] = { marker, category };
-  // Apply current filter immediately (in case map was already filtered)
-  if(!activeFilters[category]) map.removeLayer(marker);
+  // Apply current filter immediately. Assigned volunteers only see their own siren.
+  if(typeof shouldShowSirenMarker === 'function' ? !shouldShowSirenMarker(siren.id, category) : !activeFilters[category]) {
+    map.removeLayer(marker);
+  }
   marker.bindPopup(buildPopup(siren,color),{
     maxWidth:400, autoPan:true, autoPanPadding:[40,40], closeButton:false
   });

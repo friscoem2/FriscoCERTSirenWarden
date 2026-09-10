@@ -8,12 +8,14 @@ function maskEmail(email){
 
 function buildPopup(siren, color){
   const sLow   = (siren.status||'').toLowerCase();
-  const needsSU= (siren.signUpNeeded||'').toLowerCase()==='yes';
+  const assignedId = typeof currentAssignedSirenId === 'function' ? currentAssignedSirenId() : '';
+  const isMyAssignment = Boolean(assignedId && String(siren.id) === String(assignedId))
+    || (typeof canCurrentUserReport === 'function' && canCurrentUserReport(siren));
+  const needsSU= (siren.signUpNeeded||'').toLowerCase()==='yes' && !isMyAssignment;
   const ul     = urgencyLabel(siren);
   const mapsUrl= `https://www.google.com/maps?q=${siren.lat},${siren.lng}`;
   const imgSrc = driveImgSrc(siren.imageUrl,'w400');
   const imgSrcFull = driveImgSrc(siren.imageUrl,'w1200');
-  const isMyAssignment = typeof canCurrentUserReport === 'function' && canCurrentUserReport(siren);
 
   let badgeCls='badge-online';
   if(sLow==='canceled')      badgeCls='badge-canceled';
