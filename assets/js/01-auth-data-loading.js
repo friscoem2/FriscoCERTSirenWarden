@@ -110,6 +110,9 @@ async function submitLogin(event){
     let data = {};
     try { data = await response.json(); } catch { data = {}; }
 
+    if (response.status === 401) {
+      throw new Error('Incorrect Username/Password');
+    }
     if (!response.ok || !data.authenticated) {
       throw new Error(data.error || 'Login was not accepted.');
     }
@@ -220,8 +223,16 @@ async function fetchProtectedData(resource){
 function startLoad(){
   hideError();
   showLoadingScreen();
-  fetchProtectedData('sirens')
-    .then(d=>{ const rows=d.values||[]; if(rows.length<2) throw new Error('No data rows found.'); initMap(rowsToSirens(rows)); })
+  Promise.all([
+    fetchProtectedData('sirens'),
+    fetchProtectedData('assignment-status'),
+  ])
+    .then(([d, assignmentStatus])=>{
+      const rows=d.values||[];
+      if(rows.length<2) throw new Error('No data rows found.');
+      if(typeof setAssignmentServerStatus === 'function') setAssignmentServerStatus(assignmentStatus);
+      initMap(rowsToSirens(rows));
+    })
     .catch(err=>{
       if (sessionExpiresAt) showError(err.message);
     });

@@ -140,9 +140,13 @@ function hideError(){ document.getElementById('error-screen').classList.remove('
    markers without disturbing map view, zoom, or UI
    ===================================================== */
 function softRefresh(){
-  fetchProtectedData('sirens')
-    .then(d=>{
+  Promise.all([
+    fetchProtectedData('sirens'),
+    fetchProtectedData('assignment-status'),
+  ])
+    .then(([d, assignmentStatus])=>{
       const rows = d.values || [];
+      if(typeof setAssignmentServerStatus === 'function') setAssignmentServerStatus(assignmentStatus);
       if(rows.length < 2) return; // nothing to do
       const sirens = rowsToSirens(rows);
 

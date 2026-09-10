@@ -26,6 +26,9 @@ let activeFilters = { assigned:false, active:true, attention:true, action:true, 
 // immediately after a successful sign-up, even if Sheet formulas need a moment.
 let assignedReportSirenId = null;
 let assignedReportSirenSeenAt = 0;
+let assignmentServerStatus = { loaded:false, assignmentLockRequired:null, activeAssignment:null, currentWeekReportSubmitted:false };
+let assignmentLockOverride = null;
+let assignmentLockOverrideAt = 0;
 const ASSIGNMENT_SYNC_GRACE_MS = 90 * 1000;
 // Marker registry for filtering: { sirenId: { marker, category } }
 let markerRegistry = {};
@@ -60,8 +63,66 @@ function assignmentIdFromProfile(){
   return match ? match[1] : null;
 }
 
+function setAssignmentServerStatus(status){
+  assignmentServerStatus = {
+    loaded: true,
+    assignmentLockRequired: Boolean(status?.assignmentLockRequired),
+    activeAssignment: status?.activeAssignment || null,
+    currentWeekReportSubmitted: Boolean(status?.currentWeekReportSubmitted),
+  };
+
+  if(assignmentLockOverride !== null && Date.now() - assignmentLockOverrideAt >= ASSIGNMENT_SYNC_GRACE_MS){
+    assignmentLockOverride = null;
+    assignmentLockOverrideAt = 0;
+  }
+}
+
+function effectiveAssignmentLockRequired(){
+  if(assignmentLockOverride !== null && Date.now() - assignmentLockOverrideAt < ASSIGNMENT_SYNC_GRACE_MS){
+    return assignmentLockOverride;
+  }
+  if(assignmentServerStatus.loaded) return Boolean(assignmentServerStatus.assignmentLockRequired);
+  return null;
+}
+
+function markAssignmentPendingReport(sirenId){
+  assignmentLockOverride = true;
+  assignmentLockOverrideAt = Date.now();
+  assignmentServerStatus.assignmentLockRequired = true;
+  assignmentServerStatus.activeAssignment = { id:String(sirenId || '') };
+  setAssignedReportMode(sirenId);
+}
+
+function markAssignmentReportComplete(){
+  assignmentLockOverride = false;
+  assignmentLockOverrideAt = Date.now();
+  assignmentServerStatus.assignmentLockRequired = false;
+  assignmentServerStatus.currentWeekReportSubmitted = true;
+  assignedReportSirenId = null;
+  assignedReportSirenSeenAt = 0;
+  activeFilters = { assigned:false, active:true, attention:true, action:true, urgent:true };
+  syncFilterRows();
+  applyFilters();
+  updateFilterBtnState();
+}
+
 function detectAssignedSirenId(sirens){
   const email = assignmentProfileEmail();
+  const lockRequired = effectiveAssignmentLockRequired();
+
+  // Once the server confirms the latest assignment has been completed by a
+  // report, do not re-lock merely because Sheet formulas still show the email.
+  if(lockRequired === false){
+    assignedReportSirenId = null;
+    assignedReportSirenSeenAt = 0;
+    return null;
+  }
+
+  if(lockRequired === true && assignmentServerStatus.activeAssignment?.id){
+    assignedReportSirenId = String(assignmentServerStatus.activeAssignment.id);
+    assignedReportSirenSeenAt = Date.now();
+    return assignedReportSirenId;
+  }
 
   // The live siren data is authoritative once it is available.
   if(email && Array.isArray(sirens) && sirens.length){
@@ -127,6 +188,9 @@ function syncAssignedReportMode(sirens){
 function clearAssignedReportMode(){
   assignedReportSirenId = null;
   assignedReportSirenSeenAt = 0;
+  assignmentLockOverride = null;
+  assignmentLockOverrideAt = 0;
+  assignmentServerStatus = { loaded:false, assignmentLockRequired:null, activeAssignment:null, currentWeekReportSubmitted:false };
   activeFilters = { assigned:false, active:true, attention:true, action:true, urgent:true };
   syncFilterRows();
   updateFilterBtnState();

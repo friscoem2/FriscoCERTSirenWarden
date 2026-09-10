@@ -540,12 +540,17 @@
         localSiren.currentSignup = email;
         localSiren.daysSinceSignup = 0;
       }
-      if (typeof setAssignedReportMode === 'function') setAssignedReportMode(assignedId);
+      if (typeof markAssignmentPendingReport === 'function') markAssignmentPendingReport(assignedId);
+      else if (typeof setAssignedReportMode === 'function') setAssignedReportMode(assignedId);
+    }
+
+    if (type === 'report') {
+      if (typeof markAssignmentReportComplete === 'function') markAssignmentReportComplete();
     }
 
     const messages = {
       signup: ['You’re Signed Up!', `Siren #${htmlEscape(formState.siren?.id || '')} is now your active assignment. Report Mode has been enabled automatically, so only your assigned siren will appear on the map.`],
-      report: ['Report Submitted', 'Thank you. Your observation was added to the siren report sheet.'],
+      report: ['Report Submitted', 'Thank you. Your observation was added to the siren report sheet. Your assignment is complete, so Report Mode has been released and you may volunteer for another siren.'],
       suggestion: ['Suggestion Sent', 'Thank you for helping improve the Frisco Outdoor Warning Siren Map.'],
     };
     const [title, message] = messages[type] || ['Submitted', 'Your response was received.'];
