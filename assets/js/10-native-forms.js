@@ -5,6 +5,8 @@
 (() => {
   const FORM_ENDPOINT = '/api/forms';
   let formState = { type: '', siren: null, submitting: false };
+  let reportCalendarMonth = null;
+  let reportStep = 1;
 
   const SIREN_DAMAGE_OPTIONS = [
     'Physical damage to the siren housing',
@@ -209,10 +211,222 @@
     openModal();
   }
 
-  function todayLocalDate() {
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+  function startOfLocalDay(date = new Date()) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  function localIsoDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  function parseLocalIsoDate(value) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function mostRecentWednesdayDate(base = new Date()) {
+    const date = startOfLocalDay(base);
+    const daysSinceWednesday = (date.getDay() - 3 + 7) % 7;
+    date.setDate(date.getDate() - daysSinceWednesday);
+    return date;
+  }
+
+  function mostRecentWednesdayIso() {
+    return localIsoDate(mostRecentWednesdayDate());
+  }
+
+  function reportDateLabel(value) {
+    const date = parseLocalIsoDate(value);
+    if (!date) return 'Choose a Wednesday';
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(date);
+  }
+
+  function isValidObservationWednesday(value) {
+    const date = parseLocalIsoDate(value);
+    if (!date || date.getDay() !== 3) return false;
+    return date.getTime() <= startOfLocalDay().getTime();
+  }
+
+  function renderReportCalendar() {
+    const daysRoot = document.getElementById('report-calendar-days');
+    const monthLabel = document.getElementById('report-calendar-month');
+    const nextButton = document.querySelector('[data-report-calendar-shift="1"]');
+    const input = document.getElementById('report-date');
+    if (!daysRoot || !monthLabel || !input) return;
+
+    const selected = parseLocalIsoDate(input.value) || mostRecentWednesdayDate();
+    if (!reportCalendarMonth) {
+      reportCalendarMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
+    }
+
+    const year = reportCalendarMonth.getFullYear();
+    const month = reportCalendarMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = startOfLocalDay();
+    const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    monthLabel.textContent = new Intl.DateTimeFormat('en-US', {
+      month: 'long',
+      year: 'numeric',
+    }).format(firstDay);
+
+    if (nextButton) {
+      const nextMonth = new Date(year, month + 1, 1);
+      nextButton.disabled = nextMonth.getTime() > currentMonth.getTime();
+    }
+
+    const cells = [];
+    for (let i = 0; i < firstDay.getDay(); i += 1) {
+      cells.push('<span class="report-calendar-day is-empty" aria-hidden="true"></span>');
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(year, month, day);
+      const iso = localIsoDate(date);
+      const isWednesday = date.getDay() === 3;
+      const isFuture = date.getTime() > today.getTime();
+      const selectable = isWednesday && !isFuture;
+      const isSelected = iso === input.value;
+      const classes = [
+        'report-calendar-day',
+        isWednesday ? 'is-wednesday' : 'is-disabled-day',
+        isFuture ? 'is-future' : '',
+        isSelected ? 'is-selected' : '',
+      ].filter(Boolean).join(' ');
+      const title = selectable
+        ? `Select ${reportDateLabel(iso)}`
+        : (isFuture ? 'Future dates are not available' : 'Only Wednesdays are available');
+
+      cells.push(`<button type="button" class="${classes}" data-report-date="${iso}" ${selectable ? '' : 'disabled'} aria-pressed="${isSelected ? 'true' : 'false'}" title="${title}">${day}</button>`);
+    }
+
+    daysRoot.innerHTML = cells.join('');
+    const display = document.getElementById('report-date-display');
+    if (display) display.textContent = reportDateLabel(input.value);
+  }
+
+  function setReportObservationDate(value) {
+    if (!isValidObservationWednesday(value)) return;
+    const input = document.getElementById('report-date');
+    if (!input) return;
+    input.value = value;
+    const date = parseLocalIsoDate(value);
+    reportCalendarMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    renderReportCalendar();
+    clearFormError();
+  }
+
+  function shiftReportCalendar(delta) {
+    if (!reportCalendarMonth) reportCalendarMonth = new Date(mostRecentWednesdayDate().getFullYear(), mostRecentWednesdayDate().getMonth(), 1);
+    const candidate = new Date(reportCalendarMonth.getFullYear(), reportCalendarMonth.getMonth() + Number(delta || 0), 1);
+    const today = startOfLocalDay();
+    const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    if (candidate.getTime() > currentMonth.getTime()) return;
+    reportCalendarMonth = candidate;
+    renderReportCalendar();
+  }
+
+  function validateReportStep(form, step, options = {}) {
+    const showErrors = options.showErrors !== false;
+    if (step === 1) {
+      const dateValue = String(form.elements.observationDate?.value || '');
+      if (!isValidObservationWednesday(dateValue)) {
+        if (showErrors) showFormError('Choose a Wednesday on or before today for the observation date.');
+        return false;
+      }
+      if (!selectedValue(form, 'heardSiren')) {
+        if (showErrors) showFormError('Select whether you heard the siren during the noon test.');
+        return false;
+      }
+      return true;
+    }
+
+    if (step === 2) {
+      if (!selectedValue(form, 'damageOverall')) {
+        if (showErrors) showFormError('Select whether you saw any damage, vandalism, or abnormalities.');
+        return false;
+      }
+      return true;
+    }
+
+    return true;
+  }
+
+  function setReportStep(step, options = {}) {
+    const nextStep = Number(step) === 2 ? 2 : 1;
+    reportStep = nextStep;
+    document.querySelectorAll('[data-report-step]').forEach(panel => {
+      const active = Number(panel.dataset.reportStep) === nextStep;
+      panel.classList.toggle('is-active', active);
+      panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+    });
+
+    const label = document.getElementById('report-step-label');
+    if (label) label.textContent = `Step ${nextStep} of 2`;
+    const progress = document.getElementById('report-step-progress');
+    if (progress) progress.style.width = `${nextStep * 50}%`;
+    document.querySelectorAll('[data-report-step-dot]').forEach(dot => {
+      const dotStep = Number(dot.dataset.reportStepDot);
+      dot.classList.toggle('is-active', dotStep === nextStep);
+      dot.classList.toggle('is-complete', dotStep < nextStep);
+    });
+
+    const stepOneActions = document.getElementById('report-step-one-actions');
+    const stepTwoActions = document.getElementById('report-step-two-actions');
+    if (stepOneActions) stepOneActions.classList.toggle('is-hidden', nextStep !== 1);
+    if (stepTwoActions) stepTwoActions.classList.toggle('is-hidden', nextStep !== 2);
+
+    if (options.scroll !== false) {
+      requestAnimationFrame(() => {
+        const shell = document.getElementById('report-step-shell');
+        const scroll = document.getElementById('native-form-scroll');
+        if (shell && scroll) {
+          scroll.scrollTo({ top: Math.max(0, shell.offsetTop - 8), behavior: 'smooth' });
+        }
+      });
+    }
+  }
+
+  function goToNextReportStep() {
+    const form = document.querySelector('form[data-form-type="report"]');
+    if (!form) return;
+    clearFormError();
+    if (!validateReportStep(form, 1, { showErrors: true })) return;
+    setReportStep(2);
+  }
+
+  function initializeReportUx() {
+    reportStep = 1;
+    const selected = parseLocalIsoDate(document.getElementById('report-date')?.value) || mostRecentWednesdayDate();
+    reportCalendarMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
+
+    document.getElementById('report-calendar-days')?.addEventListener('click', event => {
+      const button = event.target.closest('[data-report-date]');
+      if (!button || button.disabled) return;
+      setReportObservationDate(button.dataset.reportDate);
+    });
+    document.querySelectorAll('[data-report-calendar-shift]').forEach(button => {
+      button.addEventListener('click', () => shiftReportCalendar(Number(button.dataset.reportCalendarShift || 0)));
+    });
+    document.getElementById('report-next-button')?.addEventListener('click', goToNextReportStep);
+    document.getElementById('report-previous-button')?.addEventListener('click', () => {
+      clearFormError();
+      setReportStep(1);
+    });
+
+    renderReportCalendar();
+    setReportStep(1, { scroll: false });
   }
 
   function damageCheckboxes(groupName, options) {
@@ -235,6 +449,7 @@
     }
 
     formState = { type: 'report', siren, submitting: false };
+    const defaultObservationDate = mostRecentWednesdayIso();
     setHeading('📋', 'Siren observation', `Report Siren #${siren.id}`, siren.friendlyName || 'Outdoor warning siren');
     document.getElementById('native-form-scroll').innerHTML = `
       <form class="native-form-inner" data-form-type="report" onsubmit="submitNativeForm(event)" novalidate>
@@ -243,55 +458,95 @@
         </div>
         ${summaryCards(siren, { sirenNote: 'Verified as your current assignment' })}
 
-        <div class="native-form-section">
-          <div class="native-form-section-title">Test observation</div>
-          <div class="native-field">
-            <label class="native-field-label" for="report-date">What day is your observation? <span class="native-required">*</span></label>
-            <input class="native-input" id="report-date" name="observationDate" type="date" value="${todayLocalDate()}" required>
-          </div>
-          <div class="native-field">
-            <span class="native-field-label">Did you hear the siren during the test at noon? <span class="native-required">*</span></span>
-            <div class="native-segmented" style="--segment-count:3">
-              <input id="heard-yes" type="radio" name="heardSiren" value="Yes" required><label for="heard-yes">🔊 Yes</label>
-              <input id="heard-no" type="radio" name="heardSiren" value="No"><label for="heard-no">🔇 No</label>
-              <input id="heard-unsure" type="radio" name="heardSiren" value="Unsure"><label for="heard-unsure">🤔 Unsure</label>
+        <div class="report-step-shell" id="report-step-shell">
+          <div class="report-step-header">
+            <div>
+              <span class="report-step-eyebrow" id="report-step-label">Step 1 of 2</span>
+              <span class="report-step-heading">Siren test report</span>
             </div>
+            <div class="report-step-dots" aria-hidden="true">
+              <span class="report-step-dot is-active" data-report-step-dot="1">1</span>
+              <span class="report-step-line"></span>
+              <span class="report-step-dot" data-report-step-dot="2">2</span>
+            </div>
+          </div>
+          <div class="report-step-progress-track" aria-hidden="true"><span id="report-step-progress"></span></div>
+
+          <div class="report-step-stage">
+            <section class="native-form-section report-step-panel is-active" data-report-step="1" aria-hidden="false">
+              <div class="native-form-section-title">Test observation</div>
+              <div class="native-field">
+                <span class="native-field-label">What day is your observation? <span class="native-required">*</span></span>
+                <input id="report-date" name="observationDate" type="hidden" value="${defaultObservationDate}">
+                <div class="report-date-selection" id="report-date-display">${htmlEscape(reportDateLabel(defaultObservationDate))}</div>
+                <div class="report-calendar" aria-label="Observation date calendar. Only Wednesdays can be selected.">
+                  <div class="report-calendar-header">
+                    <button type="button" class="report-calendar-nav" data-report-calendar-shift="-1" aria-label="Previous month">‹</button>
+                    <strong id="report-calendar-month"></strong>
+                    <button type="button" class="report-calendar-nav" data-report-calendar-shift="1" aria-label="Next month">›</button>
+                  </div>
+                  <div class="report-calendar-weekdays" aria-hidden="true">
+                    <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+                  </div>
+                  <div class="report-calendar-grid" id="report-calendar-days"></div>
+                  <p class="report-calendar-note">Only Wednesdays are selectable. Future dates are unavailable.</p>
+                </div>
+              </div>
+              <div class="native-field">
+                <span class="native-field-label">Did you hear the siren during the test at noon? <span class="native-required">*</span></span>
+                <div class="native-segmented" style="--segment-count:3">
+                  <input id="heard-yes" type="radio" name="heardSiren" value="Yes" required><label for="heard-yes">🔊 Yes</label>
+                  <input id="heard-no" type="radio" name="heardSiren" value="No"><label for="heard-no">🔇 No</label>
+                  <input id="heard-unsure" type="radio" name="heardSiren" value="Unsure"><label for="heard-unsure">🤔 Unsure</label>
+                </div>
+              </div>
+            </section>
+
+            <section class="native-form-section report-step-panel" data-report-step="2" aria-hidden="true">
+              <div class="native-form-section-title">Damage and abnormalities</div>
+              <p class="native-form-help">Include anything unusual about the siren equipment or the surrounding site.</p>
+              <div class="native-field">
+                <span class="native-field-label">Did you see any damage, vandalism, or abnormalities? <span class="native-required">*</span></span>
+                <div class="native-segmented">
+                  <input id="damage-no" type="radio" name="damageOverall" value="No" required onchange="toggleDamageDetails(false)"><label for="damage-no">✅ No issues</label>
+                  <input id="damage-yes" type="radio" name="damageOverall" value="Yes" onchange="toggleDamageDetails(true)"><label for="damage-yes">⚠️ Yes</label>
+                </div>
+              </div>
+
+              <div id="native-damage-groups" class="native-damage-groups is-hidden">
+                <div class="native-subsection">
+                  <div class="native-subsection-title">Issues with the siren itself</div>
+                  <div class="native-check-list">${damageCheckboxes('sirenDamage', SIREN_DAMAGE_OPTIONS)}</div>
+                  <div class="native-field" style="margin-top:9px">
+                    <label class="native-field-label" for="siren-damage-other">Other siren issue</label>
+                    <input class="native-input" id="siren-damage-other" name="sirenDamageOther" type="text" maxlength="250" placeholder="Describe another issue">
+                  </div>
+                </div>
+                <div class="native-subsection">
+                  <div class="native-subsection-title">Issues with the surrounding site</div>
+                  <div class="native-check-list">${damageCheckboxes('siteDamage', SITE_DAMAGE_OPTIONS)}</div>
+                  <div class="native-field" style="margin-top:9px">
+                    <label class="native-field-label" for="site-damage-other">Other site issue</label>
+                    <input class="native-input" id="site-damage-other" name="siteDamageOther" type="text" maxlength="250" placeholder="Describe another issue">
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
 
-        <div class="native-form-section">
-          <div class="native-form-section-title">Damage and abnormalities</div>
-          <p class="native-form-help">Include anything unusual about the siren equipment or the surrounding site.</p>
-          <div class="native-field">
-            <span class="native-field-label">Did you see any damage, vandalism, or abnormalities? <span class="native-required">*</span></span>
-            <div class="native-segmented">
-              <input id="damage-no" type="radio" name="damageOverall" value="No" required onchange="toggleDamageDetails(false)"><label for="damage-no">✅ No issues</label>
-              <input id="damage-yes" type="radio" name="damageOverall" value="Yes" onchange="toggleDamageDetails(true)"><label for="damage-yes">⚠️ Yes</label>
-            </div>
-          </div>
-
-          <div id="native-damage-groups" class="native-damage-groups is-hidden">
-            <div class="native-subsection">
-              <div class="native-subsection-title">Issues with the siren itself</div>
-              <div class="native-check-list">${damageCheckboxes('sirenDamage', SIREN_DAMAGE_OPTIONS)}</div>
-              <div class="native-field" style="margin-top:9px">
-                <label class="native-field-label" for="siren-damage-other">Other siren issue</label>
-                <input class="native-input" id="siren-damage-other" name="sirenDamageOther" type="text" maxlength="250" placeholder="Describe another issue">
-              </div>
-            </div>
-            <div class="native-subsection">
-              <div class="native-subsection-title">Issues with the surrounding site</div>
-              <div class="native-check-list">${damageCheckboxes('siteDamage', SITE_DAMAGE_OPTIONS)}</div>
-              <div class="native-field" style="margin-top:9px">
-                <label class="native-field-label" for="site-damage-other">Other site issue</label>
-                <input class="native-input" id="site-damage-other" name="siteDamageOther" type="text" maxlength="250" placeholder="Describe another issue">
-              </div>
-            </div>
-          </div>
-        </div>
         ${formErrorBlock()}
-        ${submitActions('Submit Siren Report', '📋')}
+        <div class="native-form-actions report-form-actions">
+          <div id="report-step-one-actions">
+            <button class="native-submit-button" id="report-next-button" type="button"><span>Next</span><span>→</span></button>
+          </div>
+          <div class="report-step-two-actions is-hidden" id="report-step-two-actions">
+            <button class="report-previous-button" id="report-previous-button" type="button"><span>←</span><span>Previous</span></button>
+            <button class="native-submit-button report-final-submit" id="native-submit-button" type="submit"><span>📋</span><span>Submit Report</span></button>
+          </div>
+        </div>
       </form>`;
+    initializeReportUx();
     openModal();
   }
 
@@ -476,6 +731,17 @@
     const form = event.currentTarget;
     if (formState.submitting) return;
     clearFormError();
+
+    if (form.dataset.formType === 'report') {
+      if (!validateReportStep(form, 1, { showErrors: true })) {
+        setReportStep(1);
+        return;
+      }
+      if (!validateReportStep(form, 2, { showErrors: true })) {
+        setReportStep(2);
+        return;
+      }
+    }
 
     if (!form.checkValidity()) {
       form.reportValidity();
