@@ -222,6 +222,10 @@ function sirenDisplayName(siren) {
   return `Siren #${siren.id} — ${siren.friendlyName}`;
 }
 
+function sirenSignupSheetLabel(siren) {
+  return `${siren.id} - ${siren.friendlyName}`;
+}
+
 function ensureAssignedToProfile(siren, profile) {
   const expected = profileEmail(profile).toLowerCase();
   const assigned = cleanText(siren.currentSignup, 254).toLowerCase();
@@ -262,7 +266,7 @@ async function submitSignup(body, profile) {
   const result = await appendSheetRow(sheetNameFor('signup'), [
     centralTimestamp(),
     name,
-    sirenDisplayName(siren),
+    sirenSignupSheetLabel(siren),
     email,
     username,
     siren.id,
