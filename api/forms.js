@@ -226,6 +226,27 @@ function sirenSignupSheetLabel(siren) {
   return `${siren.id} - ${siren.friendlyName}`;
 }
 
+function profileAssignmentId(profile) {
+  const raw = cleanText(profile['Current Assignment'] || profile.currentAssignment || '', 200);
+  if (!raw || /^(none|n\/a|unassigned)$/i.test(raw)) return '';
+  const match = raw.match(/(?:siren\s*#?\s*)?(\d+)/i);
+  return match ? match[1] : '';
+}
+
+async function findActiveAssignmentByEmail(email) {
+  const expected = String(email || '').trim().toLowerCase();
+  if (!expected) return null;
+  const tabName = cleanText(process.env.SIREN_SHEET_NAME || '', 100);
+  if (!tabName) throw new Error('SIREN_SHEET_NAME is not configured.');
+  const rows = await fetchWholeSheetByTitle(tabName);
+  const row = rows.slice(1).find(candidate => cleanText(candidate?.[17], 254).toLowerCase() === expected);
+  if (!row) return null;
+  return {
+    id: cleanText(row[0], 50),
+    friendlyName: cleanText(row[1] || row[2] || `Siren #${row[0]}`, 200),
+  };
+}
+
 function ensureAssignedToProfile(siren, profile) {
   const expected = profileEmail(profile).toLowerCase();
   const assigned = cleanText(siren.currentSignup, 254).toLowerCase();
@@ -262,6 +283,20 @@ async function submitSignup(body, profile) {
   const name = profileName(profile);
   const email = validateEmail(profileEmail(profile));
   const username = cleanText(profile.Username, 200);
+
+  // A volunteer may only hold one active siren assignment at a time.
+  // Check the live siren sheet first, with the profile assignment as a fallback.
+  const existingAssignment = await findActiveAssignmentByEmail(email);
+  const profileAssignedId = profileAssignmentId(profile);
+  if (existingAssignment || profileAssignedId) {
+    const assignedId = existingAssignment?.id || profileAssignedId;
+    const assignedName = existingAssignment?.friendlyName || '';
+    const label = `Siren #${assignedId}${assignedName ? ` — ${assignedName}` : ''}`;
+    throw new FormValidationError(
+      `You already have an active siren assignment (${label}). Submit your report for that assignment before volunteering for another siren.`,
+      409
+    );
+  }
 
   const result = await appendSheetRow(sheetNameFor('signup'), [
     centralTimestamp(),
