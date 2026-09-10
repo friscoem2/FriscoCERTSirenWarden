@@ -38,9 +38,12 @@ module.exports = async function handler(req, res) {
     }
 
     const publicId = String(queryValue(req, 'id') || '').trim();
+    const fresh = ['1', 'true', 'yes'].includes(
+      String(queryValue(req, 'fresh') || '').trim().toLowerCase()
+    );
     const profile = publicId
       ? await getPublicMemberProfileById(publicId)
-      : await getPublicMemberProfileByUsername(session.sub);
+      : await getPublicMemberProfileByUsername(session.sub, { forceRefresh: fresh });
 
     if (!profile) {
       return res.status(404).json({ error: { message: 'This member profile could not be found.' } });
