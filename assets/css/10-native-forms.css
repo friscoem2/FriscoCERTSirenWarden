@@ -514,3 +514,255 @@
   .native-segmented { gap: 5px; }
   .native-segmented label { font-size: 12px; padding: 8px 5px; }
 }
+
+/* =====================================================
+   SIREN REPORT STEPPER + WEDNESDAY CALENDAR
+   ===================================================== */
+.report-step-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.report-step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px 10px;
+  border: 1px solid #dce5df;
+  border-bottom: 0;
+  border-radius: 15px 15px 0 0;
+  background: #fff;
+}
+.report-step-eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  font-family: var(--font-d);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .85px;
+  text-transform: uppercase;
+  color: #7d8c83;
+}
+.report-step-heading {
+  display: block;
+  font-family: var(--font-d);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: .35px;
+  text-transform: uppercase;
+  color: var(--cert-green);
+}
+.report-step-dots {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.report-step-dot {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid #c7d2cb;
+  background: #f5f7f5;
+  color: #829087;
+  font-family: var(--font-d);
+  font-size: 12px;
+  font-weight: 900;
+  transition: background .18s, border-color .18s, color .18s;
+}
+.report-step-dot.is-active {
+  border-color: var(--cert-green);
+  background: var(--cert-green);
+  color: #fff;
+}
+.report-step-dot.is-complete {
+  border-color: #7eaa8d;
+  background: #e8f3ec;
+  color: var(--cert-green);
+}
+.report-step-line {
+  width: 22px;
+  height: 2px;
+  background: #d6ded9;
+}
+.report-step-progress-track {
+  height: 4px;
+  margin-top: -9px;
+  overflow: hidden;
+  background: #dce5df;
+}
+.report-step-progress-track > span {
+  display: block;
+  width: 50%;
+  height: 100%;
+  background: var(--cert-accent);
+  transition: width .2s ease;
+}
+.report-step-stage {
+  position: relative;
+}
+.report-step-panel {
+  display: none;
+  margin: 0;
+  border-radius: 0 0 15px 15px;
+  animation: report-step-in .18s ease;
+}
+.report-step-panel.is-active { display: block; }
+@keyframes report-step-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.report-date-selection {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid #cfe0d4;
+  background: #edf7f0;
+  color: var(--cert-green);
+  font-size: 13px;
+  font-weight: 800;
+}
+.report-calendar {
+  overflow: hidden;
+  border: 1px solid #d9e2dc;
+  border-radius: 12px;
+  background: #fbfcfb;
+}
+.report-calendar-header {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  min-height: 44px;
+  padding: 4px 6px;
+  border-bottom: 1px solid #e4eae6;
+  background: #f4f7f5;
+}
+.report-calendar-header strong {
+  text-align: center;
+  font-family: var(--font-d);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .35px;
+  text-transform: uppercase;
+  color: #3f5247;
+}
+.report-calendar-nav {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--cert-green);
+  font-size: 25px;
+  line-height: 1;
+  cursor: pointer;
+}
+.report-calendar-nav:active { background: #e7efea; }
+.report-calendar-nav:disabled { opacity: .25; cursor: default; }
+.report-calendar-weekdays,
+.report-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.report-calendar-weekdays {
+  padding: 7px 7px 3px;
+}
+.report-calendar-weekdays span {
+  text-align: center;
+  font-family: var(--font-d);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .25px;
+  color: #8a978f;
+  text-transform: uppercase;
+}
+.report-calendar-grid {
+  gap: 3px;
+  padding: 3px 7px 7px;
+}
+.report-calendar-day {
+  min-width: 0;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #a9b1ac;
+  font: 700 12px var(--font-b);
+}
+.report-calendar-day.is-empty { visibility: hidden; }
+.report-calendar-day:disabled { cursor: default; }
+.report-calendar-day.is-disabled-day,
+.report-calendar-day.is-future {
+  color: #bcc4bf;
+  background: #f4f5f4;
+  opacity: .68;
+}
+.report-calendar-day.is-wednesday:not(:disabled) {
+  border-color: #bbd2c2;
+  background: #eef6f1;
+  color: var(--cert-green);
+  font-weight: 900;
+  cursor: pointer;
+}
+.report-calendar-day.is-wednesday:not(:disabled):active {
+  transform: scale(.94);
+}
+.report-calendar-day.is-selected {
+  border-color: var(--cert-green) !important;
+  background: var(--cert-green) !important;
+  color: #fff !important;
+  box-shadow: 0 3px 8px rgba(30,82,56,.22);
+}
+.report-calendar-note {
+  margin: 0;
+  padding: 7px 10px 9px;
+  border-top: 1px solid #e7ece8;
+  color: #7b877f;
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: center;
+}
+.report-step-two-actions {
+  display: grid;
+  grid-template-columns: minmax(112px, .72fr) minmax(0, 1.28fr);
+  gap: 8px;
+}
+.report-step-two-actions.is-hidden,
+#report-step-one-actions.is-hidden { display: none; }
+.report-previous-button {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1.5px solid #b9c7be;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--cert-green);
+  font-family: var(--font-d);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .35px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.report-final-submit { font-size: 15px; }
+
+@media (max-width: 420px) {
+  .report-step-header { padding-left: 12px; padding-right: 12px; }
+  .report-step-heading { font-size: 14px; }
+  .report-step-dot { width: 26px; height: 26px; }
+  .report-step-line { width: 16px; }
+  .report-calendar-day { border-radius: 8px; font-size: 11px; }
+  .report-step-two-actions { grid-template-columns: 104px minmax(0,1fr); }
+  .report-previous-button { font-size: 12px; }
+  .report-final-submit { font-size: 14px; }
+}
