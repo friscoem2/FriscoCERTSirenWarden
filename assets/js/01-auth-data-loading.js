@@ -28,16 +28,151 @@ window.addEventListener('DOMContentLoaded', async () => {
    LOGIN
    ===================================================== */
 const REMEMBERED_USERNAME_KEY = 'cert_remembered_username';
+const LOGIN_ATTEMPTS_PREFIX = 'cert_login_attempts:';
+const LOGIN_ATTEMPT_GUIDANCE = 10;
+const SUPPORT_EMAIL = 'sworden@friscotexas.gov';
+const loginStorageFallback = new Map();
+let loginInFlight = false;
+let usernameLookupInFlight = false;
 let currentUserProfile = null;
 let sessionExpiresAt = 0;
 let sessionExpiryTimer = null;
 let appHasLoaded = false;
 
+function readLoginStorage(key){
+  try {
+    return localStorage.getItem(key) ?? loginStorageFallback.get(key) ?? '';
+  } catch {
+    return loginStorageFallback.get(key) ?? '';
+  }
+}
+
+function writeLoginStorage(key, value){
+  loginStorageFallback.set(key, String(value));
+  try { localStorage.setItem(key, String(value)); } catch { /* Keep login usable when storage is blocked. */ }
+}
+
+function loginAttemptsKey(username){
+  return LOGIN_ATTEMPTS_PREFIX + encodeURIComponent(String(username || '').trim().toLowerCase());
+}
+
+function getLoginAttempts(username){
+  if (!String(username || '').trim()) return 0;
+  const count = Number(readLoginStorage(loginAttemptsKey(username)));
+  return Number.isSafeInteger(count) && count > 0 ? count : 0;
+}
+
+function updateLoginAttempts(){
+  const attempts = getLoginAttempts(document.getElementById('login-username').value);
+  const el = document.getElementById('login-attempts');
+  el.hidden = attempts === 0;
+  el.classList.toggle('at-limit', attempts >= LOGIN_ATTEMPT_GUIDANCE);
+  el.textContent = attempts > LOGIN_ATTEMPT_GUIDANCE
+    ? `You have used ${attempts} attempts in this browser, exceeding 10 attempts.`
+    : `You have used ${attempts} of 10 attempts in this browser.`;
+  if (attempts >= LOGIN_ATTEMPT_GUIDANCE) {
+    el.textContent += ' Please use Better Impact password reset before trying again.';
+  }
+  // This reminder does not enforce or claim to know Better Impact's account lockout state.
+}
+
+function toggleUsernameLookup(){
+  if (usernameLookupInFlight || loginInFlight) return;
+  const panel = document.getElementById('username-lookup');
+  const toggle = document.getElementById('find-username-toggle');
+  panel.hidden = !panel.hidden;
+  toggle.setAttribute('aria-expanded', String(!panel.hidden));
+  if (!panel.hidden) document.getElementById('username-lookup-email').focus();
+  else toggle.focus();
+}
+
+function showUsernameLookupMessage(message, { isError = false, contactSupport = false } = {}){
+  const result = document.getElementById('username-lookup-result');
+  result.className = `username-lookup-result${isError ? ' error' : ''}`;
+  result.textContent = message;
+  if (contactSupport) {
+    const link = document.createElement('a');
+    link.href = `mailto:${SUPPORT_EMAIL}`;
+    link.textContent = SUPPORT_EMAIL;
+    result.append(' ', link, ' for help.');
+  }
+}
+
+async function submitUsernameLookup(event){
+  if (event) event.preventDefault();
+  if (usernameLookupInFlight || loginInFlight) return;
+  const form = document.getElementById('username-lookup-form');
+  const input = document.getElementById('username-lookup-email');
+  const btn = document.getElementById('username-lookup-btn');
+  const toggle = document.getElementById('find-username-toggle');
+  input.value = input.value.trim();
+  if (!form.reportValidity()) return;
+
+  usernameLookupInFlight = true;
+  input.disabled = true;
+  btn.disabled = true;
+  toggle.disabled = true;
+  btn.textContent = 'Looking up...';
+  form.setAttribute('aria-busy', 'true');
+  showUsernameLookupMessage('Checking the CERT member directory...');
+
+  try {
+    const response = await fetch('/api/find-username', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ email: input.value }),
+    });
+    let data = {};
+    try { data = await response.json(); } catch { /* A firewall may return a plain text error. */ }
+    if (response.status === 429) {
+      const seconds = Number(data.retryAfterSeconds);
+      const minutes = Number.isFinite(seconds) && seconds > 0 && seconds <= 900 ? Math.ceil(seconds / 60) : 15;
+      showUsernameLookupMessage(`Too many username searches. Please wait ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} before trying again, or email`, { isError: true, contactSupport: true });
+      return;
+    }
+    if (!response.ok) throw new Error('Username lookup failed.');
+
+    const usernames = Array.isArray(data.usernames) ? data.usernames.filter(value => typeof value === 'string' && value.trim()) : [];
+    if (data.found === false) {
+      showUsernameLookupMessage('No username was found for that email address. Please email', { contactSupport: true });
+    } else if (data.found === true && usernames.length) {
+      showUsernameLookupMessage(usernames.length === 1
+        ? `Your username is: ${usernames[0]}. It has been filled in above.`
+        : `Usernames for this email: ${usernames.join(', ')}. Enter the username you want to use above.`);
+      document.getElementById('username-lookup-result').classList.add('success');
+      if (usernames.length === 1) {
+        const usernameInput = document.getElementById('login-username');
+        usernameInput.value = usernames[0];
+        document.getElementById('login-error').textContent = '';
+        updateLoginAttempts();
+        if (!loginInFlight) document.getElementById('login-pw').focus();
+      }
+    } else {
+      throw new Error('Invalid username lookup response.');
+    }
+  } catch {
+    showUsernameLookupMessage('Username lookup is temporarily unavailable. Please try again or email', { isError: true, contactSupport: true });
+  } finally {
+    usernameLookupInFlight = false;
+    input.disabled = false;
+    btn.disabled = false;
+    toggle.disabled = loginInFlight;
+    btn.textContent = 'Find Username';
+    form.setAttribute('aria-busy', 'false');
+  }
+}
+
 async function initLogin(){
   const usernameInput = document.getElementById('login-username');
   const passwordInput = document.getElementById('login-pw');
-  const rememberedUsername = localStorage.getItem(REMEMBERED_USERNAME_KEY) || '';
+  const rememberedUsername = readLoginStorage(REMEMBERED_USERNAME_KEY);
   usernameInput.value = rememberedUsername;
+  usernameInput.addEventListener('input', updateLoginAttempts);
+  window.addEventListener('storage', event => {
+    if (!event.key || event.key.startsWith(LOGIN_ATTEMPTS_PREFIX)) updateLoginAttempts();
+  });
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && sessionExpiresAt && Date.now() >= sessionExpiresAt) {
@@ -79,8 +214,8 @@ function shakeEl(element){
 
 async function submitLogin(event){
   if (event) event.preventDefault();
+  if (loginInFlight || usernameLookupInFlight) return;
 
-  const btn = document.getElementById('login-btn');
   const usernameInput = document.getElementById('login-username');
   const passwordInput = document.getElementById('login-pw');
   const errEl = document.getElementById('login-error');
@@ -101,7 +236,8 @@ async function submitLogin(event){
     return;
   }
 
-  localStorage.setItem(REMEMBERED_USERNAME_KEY, username);
+  writeLoginStorage(REMEMBERED_USERNAME_KEY, username);
+  loginInFlight = true;
   setLoginBusy(true);
 
   try {
@@ -120,22 +256,28 @@ async function submitLogin(event){
     try { data = await response.json(); } catch { data = {}; }
 
     if (response.status === 401) {
-      throw new Error('Incorrect Username/Password');
+      writeLoginStorage(loginAttemptsKey(username), getLoginAttempts(username) + 1);
+      updateLoginAttempts();
+      throw new Error('Incorrect username or password.');
     }
     if (!response.ok || !data.authenticated) {
       throw new Error(data.error || 'Login was not accepted.');
     }
 
-    localStorage.setItem(REMEMBERED_USERNAME_KEY, data.username || username);
+    writeLoginStorage(REMEMBERED_USERNAME_KEY, data.username || username);
+    writeLoginStorage(loginAttemptsKey(username), 0);
+    writeLoginStorage(loginAttemptsKey(data.username || username), 0);
+    updateLoginAttempts();
     passwordInput.value = '';
     completeLogin(data);
   } catch (error) {
     passwordInput.value = '';
     shakeEl(passwordInput);
     errEl.textContent = error.message || 'Unable to log in. Please try again.';
-    passwordInput.focus();
   } finally {
+    loginInFlight = false;
     setLoginBusy(false);
+    if (errEl.textContent) passwordInput.focus();
   }
 }
 
@@ -146,10 +288,15 @@ function setLoginBusy(isBusy){
   btn.disabled = isBusy;
   usernameInput.disabled = isBusy;
   passwordInput.disabled = isBusy;
+  document.getElementById('find-username-toggle').disabled = isBusy || usernameLookupInFlight;
+  document.getElementById('username-lookup-btn').disabled = isBusy || usernameLookupInFlight;
   btn.textContent = isBusy ? 'Checking…' : 'Log In';
 }
 
 function completeLogin(data){
+  const username = data.username || data.profile?.Username;
+  if (username) writeLoginStorage(loginAttemptsKey(username), 0);
+  updateLoginAttempts();
   currentUserProfile = data.profile || null;
   sessionExpiresAt = Number(data.expiresAt || 0);
   window.currentUserProfile = currentUserProfile;
@@ -191,6 +338,7 @@ function showLoginScreen(message = ''){
   passwordInput.type = 'password';
   passwordInput.value = '';
   errEl.textContent = message;
+  updateLoginAttempts();
 }
 
 async function logout(){

@@ -30,6 +30,9 @@ module.exports = async function handler(req, res) {
 
   try {
     const result = await verifyBetterImpactCredentials(username, password);
+    if (result.status >= 400) {
+      throw new Error(`Better Impact login returned HTTP ${result.status}.`);
+    }
     if (!result.authenticated) {
       return res.status(401).json({ error: 'Incorrect username or password.' });
     }

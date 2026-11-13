@@ -111,7 +111,10 @@
     <div class="login-accent-bar"></div>
     <form id="login-form" class="login-form" onsubmit="submitLogin(event)" novalidate>
       <div class="login-field">
-        <label class="login-label" for="login-username">Better Impact Username</label>
+        <div class="login-field-heading">
+          <label class="login-label" for="login-username">Better Impact Username</label>
+          <button id="find-username-toggle" class="login-help-link" type="button" onclick="toggleUsernameLookup()" aria-controls="username-lookup" aria-expanded="false">Find Username</button>
+        </div>
         <div class="login-input-wrap">
           <input id="login-username" class="login-input" type="text" placeholder="Enter username" autocomplete="username" autocapitalize="none" spellcheck="false" />
         </div>
@@ -124,7 +127,22 @@
       </div>
       <button class="login-btn" id="login-btn" type="submit">Log In</button>
       <div class="login-error" id="login-error" role="alert" aria-live="polite"></div>
+      <p id="login-attempts" class="login-attempts" role="status" aria-live="polite" hidden></p>
     </form>
+    <section id="username-lookup" class="username-lookup" aria-labelledby="username-lookup-title" hidden>
+      <h2 id="username-lookup-title">Find your username</h2>
+      <p>Enter the email address on your CERT membership.</p>
+      <form id="username-lookup-form" onsubmit="submitUsernameLookup(event)">
+        <label class="login-label" for="username-lookup-email">Email address</label>
+        <input id="username-lookup-email" class="login-input" name="email" type="email" placeholder="you@example.com" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required />
+        <button id="username-lookup-btn" class="login-secondary-btn" type="submit">Find Username</button>
+      </form>
+      <div id="username-lookup-result" class="username-lookup-result" role="status" aria-live="polite" aria-atomic="true"></div>
+    </section>
+    <div class="login-help-actions">
+      <a id="password-reset-link" class="login-secondary-btn" href="https://app.betterimpact.com/Login/PasswordResetStepOne?returnUrl=%2FLogin%2FLogin" target="_blank" rel="noopener noreferrer">Better Impact password reset</a>
+      <a class="login-help-link login-new-member" href="https://www.friscotexas.gov/318/Community-Emergency-Response-Team-CERT" target="_blank" rel="noopener noreferrer">New to CERT?</a>
+    </div>
   </div>
 </div>
 
